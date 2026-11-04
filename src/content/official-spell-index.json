@@ -1,0 +1,1704 @@
+{
+  "ruleset": "srd-5.2.1",
+  "source": "https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf",
+  "pdfSha256": "8974902d109d6e63672d7c490bde9ccf052410503d9cfa768237154fbc5e3d87",
+  "license": "CC-BY-4.0",
+  "spellCount": 339,
+  "spells": [
+    {
+      "id": "spell:acid-arrow",
+      "name": "Acid Arrow",
+      "sourcePage": 107
+    },
+    {
+      "id": "spell:acid-splash",
+      "name": "Acid Splash",
+      "sourcePage": 107
+    },
+    {
+      "id": "spell:aid",
+      "name": "Aid",
+      "sourcePage": 107
+    },
+    {
+      "id": "spell:alarm",
+      "name": "Alarm",
+      "sourcePage": 107
+    },
+    {
+      "id": "spell:alter-self",
+      "name": "Alter Self",
+      "sourcePage": 107
+    },
+    {
+      "id": "spell:animal-friendship",
+      "name": "Animal Friendship",
+      "sourcePage": 107
+    },
+    {
+      "id": "spell:animal-messenger",
+      "name": "Animal Messenger",
+      "sourcePage": 108
+    },
+    {
+      "id": "spell:animal-shapes",
+      "name": "Animal Shapes",
+      "sourcePage": 108
+    },
+    {
+      "id": "spell:animate-dead",
+      "name": "Animate Dead",
+      "sourcePage": 108
+    },
+    {
+      "id": "spell:animate-objects",
+      "name": "Animate Objects",
+      "sourcePage": 108
+    },
+    {
+      "id": "spell:antilife-shell",
+      "name": "Antilife Shell",
+      "sourcePage": 109
+    },
+    {
+      "id": "spell:antimagic-field",
+      "name": "Antimagic Field",
+      "sourcePage": 109
+    },
+    {
+      "id": "spell:antipathy-sympathy",
+      "name": "Antipathy/Sympathy",
+      "sourcePage": 109
+    },
+    {
+      "id": "spell:arcane-eye",
+      "name": "Arcane Eye",
+      "sourcePage": 110
+    },
+    {
+      "id": "spell:arcane-hand",
+      "name": "Arcane Hand",
+      "sourcePage": 110
+    },
+    {
+      "id": "spell:arcane-lock",
+      "name": "Arcane Lock",
+      "sourcePage": 110
+    },
+    {
+      "id": "spell:arcane-sword",
+      "name": "Arcane Sword",
+      "sourcePage": 110
+    },
+    {
+      "id": "spell:arcanists-magic-aura",
+      "name": "Arcanist’s Magic Aura",
+      "sourcePage": 110
+    },
+    {
+      "id": "spell:astral-projection",
+      "name": "Astral Projection",
+      "sourcePage": 111
+    },
+    {
+      "id": "spell:augury",
+      "name": "Augury",
+      "sourcePage": 111
+    },
+    {
+      "id": "spell:aura-of-life",
+      "name": "Aura of Life",
+      "sourcePage": 111
+    },
+    {
+      "id": "spell:awaken",
+      "name": "Awaken",
+      "sourcePage": 111
+    },
+    {
+      "id": "spell:bane",
+      "name": "Bane",
+      "sourcePage": 112
+    },
+    {
+      "id": "spell:banishment",
+      "name": "Banishment",
+      "sourcePage": 112
+    },
+    {
+      "id": "spell:barkskin",
+      "name": "Barkskin",
+      "sourcePage": 112
+    },
+    {
+      "id": "spell:beacon-of-hope",
+      "name": "Beacon of Hope",
+      "sourcePage": 112
+    },
+    {
+      "id": "spell:befuddlement",
+      "name": "Befuddlement",
+      "sourcePage": 112
+    },
+    {
+      "id": "spell:bestow-curse",
+      "name": "Bestow Curse",
+      "sourcePage": 112
+    },
+    {
+      "id": "spell:black-tentacles",
+      "name": "Black Tentacles",
+      "sourcePage": 113
+    },
+    {
+      "id": "spell:blade-barrier",
+      "name": "Blade Barrier",
+      "sourcePage": 113
+    },
+    {
+      "id": "spell:bless",
+      "name": "Bless",
+      "sourcePage": 113
+    },
+    {
+      "id": "spell:blight",
+      "name": "Blight",
+      "sourcePage": 113
+    },
+    {
+      "id": "spell:blindness-deafness",
+      "name": "Blindness/Deafness",
+      "sourcePage": 113
+    },
+    {
+      "id": "spell:blink",
+      "name": "Blink",
+      "sourcePage": 113
+    },
+    {
+      "id": "spell:blur",
+      "name": "Blur",
+      "sourcePage": 114
+    },
+    {
+      "id": "spell:burning-hands",
+      "name": "Burning Hands",
+      "sourcePage": 114
+    },
+    {
+      "id": "spell:call-lightning",
+      "name": "Call Lightning",
+      "sourcePage": 114
+    },
+    {
+      "id": "spell:calm-emotions",
+      "name": "Calm Emotions",
+      "sourcePage": 114
+    },
+    {
+      "id": "spell:chain-lightning",
+      "name": "Chain Lightning",
+      "sourcePage": 114
+    },
+    {
+      "id": "spell:charm-monster",
+      "name": "Charm Monster",
+      "sourcePage": 114
+    },
+    {
+      "id": "spell:charm-person",
+      "name": "Charm Person",
+      "sourcePage": 115
+    },
+    {
+      "id": "spell:chill-touch",
+      "name": "Chill Touch",
+      "sourcePage": 115
+    },
+    {
+      "id": "spell:chromatic-orb",
+      "name": "Chromatic Orb",
+      "sourcePage": 115
+    },
+    {
+      "id": "spell:circle-of-death",
+      "name": "Circle of Death",
+      "sourcePage": 115
+    },
+    {
+      "id": "spell:clairvoyance",
+      "name": "Clairvoyance",
+      "sourcePage": 115
+    },
+    {
+      "id": "spell:clone",
+      "name": "Clone",
+      "sourcePage": 115
+    },
+    {
+      "id": "spell:cloudkill",
+      "name": "Cloudkill",
+      "sourcePage": 116
+    },
+    {
+      "id": "spell:color-spray",
+      "name": "Color Spray",
+      "sourcePage": 116
+    },
+    {
+      "id": "spell:command",
+      "name": "Command",
+      "sourcePage": 116
+    },
+    {
+      "id": "spell:commune",
+      "name": "Commune",
+      "sourcePage": 116
+    },
+    {
+      "id": "spell:commune-with-nature",
+      "name": "Commune with Nature",
+      "sourcePage": 116
+    },
+    {
+      "id": "spell:comprehend-languages",
+      "name": "Comprehend Languages",
+      "sourcePage": 117
+    },
+    {
+      "id": "spell:compulsion",
+      "name": "Compulsion",
+      "sourcePage": 117
+    },
+    {
+      "id": "spell:cone-of-cold",
+      "name": "Cone of Cold",
+      "sourcePage": 117
+    },
+    {
+      "id": "spell:confusion",
+      "name": "Confusion",
+      "sourcePage": 117
+    },
+    {
+      "id": "spell:conjure-animals",
+      "name": "Conjure Animals",
+      "sourcePage": 117
+    },
+    {
+      "id": "spell:conjure-celestial",
+      "name": "Conjure Celestial",
+      "sourcePage": 118
+    },
+    {
+      "id": "spell:conjure-elemental",
+      "name": "Conjure Elemental",
+      "sourcePage": 118
+    },
+    {
+      "id": "spell:conjure-fey",
+      "name": "Conjure Fey",
+      "sourcePage": 118
+    },
+    {
+      "id": "spell:conjure-minor-elementals",
+      "name": "Conjure Minor Elementals",
+      "sourcePage": 118
+    },
+    {
+      "id": "spell:conjure-woodland-beings",
+      "name": "Conjure Woodland Beings",
+      "sourcePage": 118
+    },
+    {
+      "id": "spell:contact-other-plane",
+      "name": "Contact Other Plane",
+      "sourcePage": 119
+    },
+    {
+      "id": "spell:contagion",
+      "name": "Contagion",
+      "sourcePage": 119
+    },
+    {
+      "id": "spell:contingency",
+      "name": "Contingency",
+      "sourcePage": 119
+    },
+    {
+      "id": "spell:continual-flame",
+      "name": "Continual Flame",
+      "sourcePage": 119
+    },
+    {
+      "id": "spell:control-water",
+      "name": "Control Water",
+      "sourcePage": 119
+    },
+    {
+      "id": "spell:control-weather",
+      "name": "Control Weather",
+      "sourcePage": 120
+    },
+    {
+      "id": "spell:counterspell",
+      "name": "Counterspell",
+      "sourcePage": 120
+    },
+    {
+      "id": "spell:create-food-and-water",
+      "name": "Create Food and Water",
+      "sourcePage": 120
+    },
+    {
+      "id": "spell:create-or-destroy-water",
+      "name": "Create or Destroy Water",
+      "sourcePage": 121
+    },
+    {
+      "id": "spell:create-undead",
+      "name": "Create Undead",
+      "sourcePage": 121
+    },
+    {
+      "id": "spell:creation",
+      "name": "Creation",
+      "sourcePage": 121
+    },
+    {
+      "id": "spell:cure-wounds",
+      "name": "Cure Wounds",
+      "sourcePage": 121
+    },
+    {
+      "id": "spell:dancing-lights",
+      "name": "Dancing Lights",
+      "sourcePage": 121
+    },
+    {
+      "id": "spell:darkness",
+      "name": "Darkness",
+      "sourcePage": 122
+    },
+    {
+      "id": "spell:darkvision",
+      "name": "Darkvision",
+      "sourcePage": 122
+    },
+    {
+      "id": "spell:daylight",
+      "name": "Daylight",
+      "sourcePage": 122
+    },
+    {
+      "id": "spell:death-ward",
+      "name": "Death Ward",
+      "sourcePage": 122
+    },
+    {
+      "id": "spell:delayed-blast-fireball",
+      "name": "Delayed Blast Fireball",
+      "sourcePage": 122
+    },
+    {
+      "id": "spell:demiplane",
+      "name": "Demiplane",
+      "sourcePage": 122
+    },
+    {
+      "id": "spell:detect-evil-and-good",
+      "name": "Detect Evil and Good",
+      "sourcePage": 123
+    },
+    {
+      "id": "spell:detect-magic",
+      "name": "Detect Magic",
+      "sourcePage": 123
+    },
+    {
+      "id": "spell:detect-poison-and-disease",
+      "name": "Detect Poison and Disease",
+      "sourcePage": 123
+    },
+    {
+      "id": "spell:detect-thoughts",
+      "name": "Detect Thoughts",
+      "sourcePage": 123
+    },
+    {
+      "id": "spell:dimension-door",
+      "name": "Dimension Door",
+      "sourcePage": 123
+    },
+    {
+      "id": "spell:disguise-self",
+      "name": "Disguise Self",
+      "sourcePage": 124
+    },
+    {
+      "id": "spell:disintegrate",
+      "name": "Disintegrate",
+      "sourcePage": 124
+    },
+    {
+      "id": "spell:dispel-evil-and-good",
+      "name": "Dispel Evil and Good",
+      "sourcePage": 124
+    },
+    {
+      "id": "spell:dispel-magic",
+      "name": "Dispel Magic",
+      "sourcePage": 124
+    },
+    {
+      "id": "spell:dissonant-whispers",
+      "name": "Dissonant Whispers",
+      "sourcePage": 124
+    },
+    {
+      "id": "spell:divination",
+      "name": "Divination",
+      "sourcePage": 125
+    },
+    {
+      "id": "spell:divine-favor",
+      "name": "Divine Favor",
+      "sourcePage": 125
+    },
+    {
+      "id": "spell:divine-smite",
+      "name": "Divine Smite",
+      "sourcePage": 125
+    },
+    {
+      "id": "spell:divine-word",
+      "name": "Divine Word",
+      "sourcePage": 125
+    },
+    {
+      "id": "spell:dominate-beast",
+      "name": "Dominate Beast",
+      "sourcePage": 125
+    },
+    {
+      "id": "spell:dominate-monster",
+      "name": "Dominate Monster",
+      "sourcePage": 125
+    },
+    {
+      "id": "spell:dominate-person",
+      "name": "Dominate Person",
+      "sourcePage": 126
+    },
+    {
+      "id": "spell:dragons-breath",
+      "name": "Dragon’s Breath",
+      "sourcePage": 126
+    },
+    {
+      "id": "spell:dream",
+      "name": "Dream",
+      "sourcePage": 126
+    },
+    {
+      "id": "spell:druidcraft",
+      "name": "Druidcraft",
+      "sourcePage": 126
+    },
+    {
+      "id": "spell:earthquake",
+      "name": "Earthquake",
+      "sourcePage": 127
+    },
+    {
+      "id": "spell:eldritch-blast",
+      "name": "Eldritch Blast",
+      "sourcePage": 127
+    },
+    {
+      "id": "spell:elementalism",
+      "name": "Elementalism",
+      "sourcePage": 127
+    },
+    {
+      "id": "spell:enhance-ability",
+      "name": "Enhance Ability",
+      "sourcePage": 127
+    },
+    {
+      "id": "spell:enlarge-reduce",
+      "name": "Enlarge/Reduce",
+      "sourcePage": 127
+    },
+    {
+      "id": "spell:ensnaring-strike",
+      "name": "Ensnaring Strike",
+      "sourcePage": 128
+    },
+    {
+      "id": "spell:entangle",
+      "name": "Entangle",
+      "sourcePage": 128
+    },
+    {
+      "id": "spell:enthrall",
+      "name": "Enthrall",
+      "sourcePage": 128
+    },
+    {
+      "id": "spell:etherealness",
+      "name": "Etherealness",
+      "sourcePage": 128
+    },
+    {
+      "id": "spell:expeditious-retreat",
+      "name": "Expeditious Retreat",
+      "sourcePage": 129
+    },
+    {
+      "id": "spell:eyebite",
+      "name": "Eyebite",
+      "sourcePage": 129
+    },
+    {
+      "id": "spell:fabricate",
+      "name": "Fabricate",
+      "sourcePage": 129
+    },
+    {
+      "id": "spell:faerie-fire",
+      "name": "Faerie Fire",
+      "sourcePage": 129
+    },
+    {
+      "id": "spell:faithful-hound",
+      "name": "Faithful Hound",
+      "sourcePage": 129
+    },
+    {
+      "id": "spell:false-life",
+      "name": "False Life",
+      "sourcePage": 129
+    },
+    {
+      "id": "spell:fear",
+      "name": "Fear",
+      "sourcePage": 130
+    },
+    {
+      "id": "spell:feather-fall",
+      "name": "Feather Fall",
+      "sourcePage": 130
+    },
+    {
+      "id": "spell:find-familiar",
+      "name": "Find Familiar",
+      "sourcePage": 130
+    },
+    {
+      "id": "spell:find-steed",
+      "name": "Find Steed",
+      "sourcePage": 130
+    },
+    {
+      "id": "spell:find-the-path",
+      "name": "Find the Path",
+      "sourcePage": 131
+    },
+    {
+      "id": "spell:find-traps",
+      "name": "Find Traps",
+      "sourcePage": 131
+    },
+    {
+      "id": "spell:finger-of-death",
+      "name": "Finger of Death",
+      "sourcePage": 131
+    },
+    {
+      "id": "spell:fire-bolt",
+      "name": "Fire Bolt",
+      "sourcePage": 132
+    },
+    {
+      "id": "spell:fire-shield",
+      "name": "Fire Shield",
+      "sourcePage": 132
+    },
+    {
+      "id": "spell:fire-storm",
+      "name": "Fire Storm",
+      "sourcePage": 132
+    },
+    {
+      "id": "spell:fireball",
+      "name": "Fireball",
+      "sourcePage": 131
+    },
+    {
+      "id": "spell:flame-blade",
+      "name": "Flame Blade",
+      "sourcePage": 132
+    },
+    {
+      "id": "spell:flame-strike",
+      "name": "Flame Strike",
+      "sourcePage": 132
+    },
+    {
+      "id": "spell:flaming-sphere",
+      "name": "Flaming Sphere",
+      "sourcePage": 132
+    },
+    {
+      "id": "spell:flesh-to-stone",
+      "name": "Flesh to Stone",
+      "sourcePage": 133
+    },
+    {
+      "id": "spell:floating-disk",
+      "name": "Floating Disk",
+      "sourcePage": 133
+    },
+    {
+      "id": "spell:fly",
+      "name": "Fly",
+      "sourcePage": 133
+    },
+    {
+      "id": "spell:fog-cloud",
+      "name": "Fog Cloud",
+      "sourcePage": 133
+    },
+    {
+      "id": "spell:forbiddance",
+      "name": "Forbiddance",
+      "sourcePage": 133
+    },
+    {
+      "id": "spell:forcecage",
+      "name": "Forcecage",
+      "sourcePage": 134
+    },
+    {
+      "id": "spell:foresight",
+      "name": "Foresight",
+      "sourcePage": 134
+    },
+    {
+      "id": "spell:freedom-of-movement",
+      "name": "Freedom of Movement",
+      "sourcePage": 134
+    },
+    {
+      "id": "spell:freezing-sphere",
+      "name": "Freezing Sphere",
+      "sourcePage": 134
+    },
+    {
+      "id": "spell:gaseous-form",
+      "name": "Gaseous Form",
+      "sourcePage": 134
+    },
+    {
+      "id": "spell:gate",
+      "name": "Gate",
+      "sourcePage": 135
+    },
+    {
+      "id": "spell:geas",
+      "name": "Geas",
+      "sourcePage": 135
+    },
+    {
+      "id": "spell:gentle-repose",
+      "name": "Gentle Repose",
+      "sourcePage": 135
+    },
+    {
+      "id": "spell:giant-insect",
+      "name": "Giant Insect",
+      "sourcePage": 135
+    },
+    {
+      "id": "spell:glibness",
+      "name": "Glibness",
+      "sourcePage": 136
+    },
+    {
+      "id": "spell:globe-of-invulnerability",
+      "name": "Globe of Invulnerability",
+      "sourcePage": 136
+    },
+    {
+      "id": "spell:glyph-of-warding",
+      "name": "Glyph of Warding",
+      "sourcePage": 136
+    },
+    {
+      "id": "spell:goodberry",
+      "name": "Goodberry",
+      "sourcePage": 137
+    },
+    {
+      "id": "spell:grease",
+      "name": "Grease",
+      "sourcePage": 137
+    },
+    {
+      "id": "spell:greater-invisibility",
+      "name": "Greater Invisibility",
+      "sourcePage": 137
+    },
+    {
+      "id": "spell:greater-restoration",
+      "name": "Greater Restoration",
+      "sourcePage": 137
+    },
+    {
+      "id": "spell:guardian-of-faith",
+      "name": "Guardian of Faith",
+      "sourcePage": 137
+    },
+    {
+      "id": "spell:guards-and-wards",
+      "name": "Guards and Wards",
+      "sourcePage": 137
+    },
+    {
+      "id": "spell:guidance",
+      "name": "Guidance",
+      "sourcePage": 138
+    },
+    {
+      "id": "spell:guiding-bolt",
+      "name": "Guiding Bolt",
+      "sourcePage": 138
+    },
+    {
+      "id": "spell:gust-of-wind",
+      "name": "Gust of Wind",
+      "sourcePage": 138
+    },
+    {
+      "id": "spell:hallow",
+      "name": "Hallow",
+      "sourcePage": 138
+    },
+    {
+      "id": "spell:hallucinatory-terrain",
+      "name": "Hallucinatory Terrain",
+      "sourcePage": 139
+    },
+    {
+      "id": "spell:harm",
+      "name": "Harm",
+      "sourcePage": 139
+    },
+    {
+      "id": "spell:haste",
+      "name": "Haste",
+      "sourcePage": 139
+    },
+    {
+      "id": "spell:heal",
+      "name": "Heal",
+      "sourcePage": 139
+    },
+    {
+      "id": "spell:healing-word",
+      "name": "Healing Word",
+      "sourcePage": 139
+    },
+    {
+      "id": "spell:heat-metal",
+      "name": "Heat Metal",
+      "sourcePage": 139
+    },
+    {
+      "id": "spell:hellish-rebuke",
+      "name": "Hellish Rebuke",
+      "sourcePage": 140
+    },
+    {
+      "id": "spell:heroes-feast",
+      "name": "Heroes’ Feast",
+      "sourcePage": 140
+    },
+    {
+      "id": "spell:heroism",
+      "name": "Heroism",
+      "sourcePage": 140
+    },
+    {
+      "id": "spell:hex",
+      "name": "Hex",
+      "sourcePage": 140
+    },
+    {
+      "id": "spell:hideous-laughter",
+      "name": "Hideous Laughter",
+      "sourcePage": 140
+    },
+    {
+      "id": "spell:hold-monster",
+      "name": "Hold Monster",
+      "sourcePage": 140
+    },
+    {
+      "id": "spell:hold-person",
+      "name": "Hold Person",
+      "sourcePage": 141
+    },
+    {
+      "id": "spell:holy-aura",
+      "name": "Holy Aura",
+      "sourcePage": 141
+    },
+    {
+      "id": "spell:hunters-mark",
+      "name": "Hunter’s Mark",
+      "sourcePage": 141
+    },
+    {
+      "id": "spell:hypnotic-pattern",
+      "name": "Hypnotic Pattern",
+      "sourcePage": 141
+    },
+    {
+      "id": "spell:ice-knife",
+      "name": "Ice Knife",
+      "sourcePage": 141
+    },
+    {
+      "id": "spell:ice-storm",
+      "name": "Ice Storm",
+      "sourcePage": 141
+    },
+    {
+      "id": "spell:identify",
+      "name": "Identify",
+      "sourcePage": 142
+    },
+    {
+      "id": "spell:illusory-script",
+      "name": "Illusory Script",
+      "sourcePage": 142
+    },
+    {
+      "id": "spell:imprisonment",
+      "name": "Imprisonment",
+      "sourcePage": 142
+    },
+    {
+      "id": "spell:incendiary-cloud",
+      "name": "Incendiary Cloud",
+      "sourcePage": 142
+    },
+    {
+      "id": "spell:inflict-wounds",
+      "name": "Inflict Wounds",
+      "sourcePage": 143
+    },
+    {
+      "id": "spell:insect-plague",
+      "name": "Insect Plague",
+      "sourcePage": 143
+    },
+    {
+      "id": "spell:instant-summons",
+      "name": "Instant Summons",
+      "sourcePage": 143
+    },
+    {
+      "id": "spell:invisibility",
+      "name": "Invisibility",
+      "sourcePage": 143
+    },
+    {
+      "id": "spell:irresistible-dance",
+      "name": "Irresistible Dance",
+      "sourcePage": 143
+    },
+    {
+      "id": "spell:jump",
+      "name": "Jump",
+      "sourcePage": 143
+    },
+    {
+      "id": "spell:knock",
+      "name": "Knock",
+      "sourcePage": 143
+    },
+    {
+      "id": "spell:legend-lore",
+      "name": "Legend Lore",
+      "sourcePage": 144
+    },
+    {
+      "id": "spell:lesser-restoration",
+      "name": "Lesser Restoration",
+      "sourcePage": 144
+    },
+    {
+      "id": "spell:levitate",
+      "name": "Levitate",
+      "sourcePage": 144
+    },
+    {
+      "id": "spell:light",
+      "name": "Light",
+      "sourcePage": 144
+    },
+    {
+      "id": "spell:lightning-bolt",
+      "name": "Lightning Bolt",
+      "sourcePage": 144
+    },
+    {
+      "id": "spell:locate-animals-or-plants",
+      "name": "Locate Animals or Plants",
+      "sourcePage": 144
+    },
+    {
+      "id": "spell:locate-creature",
+      "name": "Locate Creature",
+      "sourcePage": 145
+    },
+    {
+      "id": "spell:locate-object",
+      "name": "Locate Object",
+      "sourcePage": 145
+    },
+    {
+      "id": "spell:longstrider",
+      "name": "Longstrider",
+      "sourcePage": 145
+    },
+    {
+      "id": "spell:mage-armor",
+      "name": "Mage Armor",
+      "sourcePage": 145
+    },
+    {
+      "id": "spell:mage-hand",
+      "name": "Mage Hand",
+      "sourcePage": 145
+    },
+    {
+      "id": "spell:magic-circle",
+      "name": "Magic Circle",
+      "sourcePage": 145
+    },
+    {
+      "id": "spell:magic-jar",
+      "name": "Magic Jar",
+      "sourcePage": 146
+    },
+    {
+      "id": "spell:magic-missile",
+      "name": "Magic Missile",
+      "sourcePage": 146
+    },
+    {
+      "id": "spell:magic-mouth",
+      "name": "Magic Mouth",
+      "sourcePage": 146
+    },
+    {
+      "id": "spell:magic-weapon",
+      "name": "Magic Weapon",
+      "sourcePage": 146
+    },
+    {
+      "id": "spell:magnificent-mansion",
+      "name": "Magnificent Mansion",
+      "sourcePage": 147
+    },
+    {
+      "id": "spell:major-image",
+      "name": "Major Image",
+      "sourcePage": 147
+    },
+    {
+      "id": "spell:mass-cure-wounds",
+      "name": "Mass Cure Wounds",
+      "sourcePage": 147
+    },
+    {
+      "id": "spell:mass-heal",
+      "name": "Mass Heal",
+      "sourcePage": 147
+    },
+    {
+      "id": "spell:mass-healing-word",
+      "name": "Mass Healing Word",
+      "sourcePage": 148
+    },
+    {
+      "id": "spell:mass-suggestion",
+      "name": "Mass Suggestion",
+      "sourcePage": 148
+    },
+    {
+      "id": "spell:maze",
+      "name": "Maze",
+      "sourcePage": 148
+    },
+    {
+      "id": "spell:meld-into-stone",
+      "name": "Meld into Stone",
+      "sourcePage": 148
+    },
+    {
+      "id": "spell:mending",
+      "name": "Mending",
+      "sourcePage": 148
+    },
+    {
+      "id": "spell:message",
+      "name": "Message",
+      "sourcePage": 148
+    },
+    {
+      "id": "spell:meteor-swarm",
+      "name": "Meteor Swarm",
+      "sourcePage": 149
+    },
+    {
+      "id": "spell:mind-blank",
+      "name": "Mind Blank",
+      "sourcePage": 149
+    },
+    {
+      "id": "spell:mind-spike",
+      "name": "Mind Spike",
+      "sourcePage": 149
+    },
+    {
+      "id": "spell:minor-illusion",
+      "name": "Minor Illusion",
+      "sourcePage": 149
+    },
+    {
+      "id": "spell:mirage-arcane",
+      "name": "Mirage Arcane",
+      "sourcePage": 149
+    },
+    {
+      "id": "spell:mirror-image",
+      "name": "Mirror Image",
+      "sourcePage": 150
+    },
+    {
+      "id": "spell:mislead",
+      "name": "Mislead",
+      "sourcePage": 150
+    },
+    {
+      "id": "spell:misty-step",
+      "name": "Misty Step",
+      "sourcePage": 150
+    },
+    {
+      "id": "spell:modify-memory",
+      "name": "Modify Memory",
+      "sourcePage": 150
+    },
+    {
+      "id": "spell:moonbeam",
+      "name": "Moonbeam",
+      "sourcePage": 150
+    },
+    {
+      "id": "spell:move-earth",
+      "name": "Move Earth",
+      "sourcePage": 151
+    },
+    {
+      "id": "spell:nondetection",
+      "name": "Nondetection",
+      "sourcePage": 151
+    },
+    {
+      "id": "spell:pass-without-trace",
+      "name": "Pass without Trace",
+      "sourcePage": 151
+    },
+    {
+      "id": "spell:passwall",
+      "name": "Passwall",
+      "sourcePage": 151
+    },
+    {
+      "id": "spell:phantasmal-force",
+      "name": "Phantasmal Force",
+      "sourcePage": 151
+    },
+    {
+      "id": "spell:phantasmal-killer",
+      "name": "Phantasmal Killer",
+      "sourcePage": 152
+    },
+    {
+      "id": "spell:phantom-steed",
+      "name": "Phantom Steed",
+      "sourcePage": 152
+    },
+    {
+      "id": "spell:planar-ally",
+      "name": "Planar Ally",
+      "sourcePage": 152
+    },
+    {
+      "id": "spell:planar-binding",
+      "name": "Planar Binding",
+      "sourcePage": 152
+    },
+    {
+      "id": "spell:plane-shift",
+      "name": "Plane Shift",
+      "sourcePage": 153
+    },
+    {
+      "id": "spell:plant-growth",
+      "name": "Plant Growth",
+      "sourcePage": 153
+    },
+    {
+      "id": "spell:poison-spray",
+      "name": "Poison Spray",
+      "sourcePage": 153
+    },
+    {
+      "id": "spell:polymorph",
+      "name": "Polymorph",
+      "sourcePage": 153
+    },
+    {
+      "id": "spell:power-word-heal",
+      "name": "Power Word Heal",
+      "sourcePage": 154
+    },
+    {
+      "id": "spell:power-word-kill",
+      "name": "Power Word Kill",
+      "sourcePage": 154
+    },
+    {
+      "id": "spell:power-word-stun",
+      "name": "Power Word Stun",
+      "sourcePage": 154
+    },
+    {
+      "id": "spell:prayer-of-healing",
+      "name": "Prayer of Healing",
+      "sourcePage": 154
+    },
+    {
+      "id": "spell:prestidigitation",
+      "name": "Prestidigitation",
+      "sourcePage": 154
+    },
+    {
+      "id": "spell:prismatic-spray",
+      "name": "Prismatic Spray",
+      "sourcePage": 154
+    },
+    {
+      "id": "spell:prismatic-wall",
+      "name": "Prismatic Wall",
+      "sourcePage": 155
+    },
+    {
+      "id": "spell:private-sanctum",
+      "name": "Private Sanctum",
+      "sourcePage": 156
+    },
+    {
+      "id": "spell:produce-flame",
+      "name": "Produce Flame",
+      "sourcePage": 156
+    },
+    {
+      "id": "spell:programmed-illusion",
+      "name": "Programmed Illusion",
+      "sourcePage": 156
+    },
+    {
+      "id": "spell:project-image",
+      "name": "Project Image",
+      "sourcePage": 156
+    },
+    {
+      "id": "spell:protection-from-energy",
+      "name": "Protection from Energy",
+      "sourcePage": 157
+    },
+    {
+      "id": "spell:protection-from-evil-and-good",
+      "name": "Protection from Evil and Good",
+      "sourcePage": 157
+    },
+    {
+      "id": "spell:protection-from-poison",
+      "name": "Protection from Poison",
+      "sourcePage": 157
+    },
+    {
+      "id": "spell:purify-food-and-drink",
+      "name": "Purify Food and Drink",
+      "sourcePage": 157
+    },
+    {
+      "id": "spell:raise-dead",
+      "name": "Raise Dead",
+      "sourcePage": 157
+    },
+    {
+      "id": "spell:ray-of-enfeeblement",
+      "name": "Ray of Enfeeblement",
+      "sourcePage": 157
+    },
+    {
+      "id": "spell:ray-of-frost",
+      "name": "Ray of Frost",
+      "sourcePage": 157
+    },
+    {
+      "id": "spell:ray-of-sickness",
+      "name": "Ray of Sickness",
+      "sourcePage": 158
+    },
+    {
+      "id": "spell:regenerate",
+      "name": "Regenerate",
+      "sourcePage": 158
+    },
+    {
+      "id": "spell:reincarnate",
+      "name": "Reincarnate",
+      "sourcePage": 158
+    },
+    {
+      "id": "spell:remove-curse",
+      "name": "Remove Curse",
+      "sourcePage": 158
+    },
+    {
+      "id": "spell:resilient-sphere",
+      "name": "Resilient Sphere",
+      "sourcePage": 158
+    },
+    {
+      "id": "spell:resistance",
+      "name": "Resistance",
+      "sourcePage": 158
+    },
+    {
+      "id": "spell:resurrection",
+      "name": "Resurrection",
+      "sourcePage": 158
+    },
+    {
+      "id": "spell:reverse-gravity",
+      "name": "Reverse Gravity",
+      "sourcePage": 159
+    },
+    {
+      "id": "spell:revivify",
+      "name": "Revivify",
+      "sourcePage": 159
+    },
+    {
+      "id": "spell:rope-trick",
+      "name": "Rope Trick",
+      "sourcePage": 159
+    },
+    {
+      "id": "spell:sacred-flame",
+      "name": "Sacred Flame",
+      "sourcePage": 159
+    },
+    {
+      "id": "spell:sanctuary",
+      "name": "Sanctuary",
+      "sourcePage": 159
+    },
+    {
+      "id": "spell:scorching-ray",
+      "name": "Scorching Ray",
+      "sourcePage": 159
+    },
+    {
+      "id": "spell:scrying",
+      "name": "Scrying",
+      "sourcePage": 160
+    },
+    {
+      "id": "spell:searing-smite",
+      "name": "Searing Smite",
+      "sourcePage": 160
+    },
+    {
+      "id": "spell:secret-chest",
+      "name": "Secret Chest",
+      "sourcePage": 160
+    },
+    {
+      "id": "spell:see-invisibility",
+      "name": "See Invisibility",
+      "sourcePage": 160
+    },
+    {
+      "id": "spell:seeming",
+      "name": "Seeming",
+      "sourcePage": 160
+    },
+    {
+      "id": "spell:sending",
+      "name": "Sending",
+      "sourcePage": 161
+    },
+    {
+      "id": "spell:sequester",
+      "name": "Sequester",
+      "sourcePage": 161
+    },
+    {
+      "id": "spell:shapechange",
+      "name": "Shapechange",
+      "sourcePage": 161
+    },
+    {
+      "id": "spell:shatter",
+      "name": "Shatter",
+      "sourcePage": 161
+    },
+    {
+      "id": "spell:shield",
+      "name": "Shield",
+      "sourcePage": 161
+    },
+    {
+      "id": "spell:shield-of-faith",
+      "name": "Shield of Faith",
+      "sourcePage": 162
+    },
+    {
+      "id": "spell:shillelagh",
+      "name": "Shillelagh",
+      "sourcePage": 162
+    },
+    {
+      "id": "spell:shining-smite",
+      "name": "Shining Smite",
+      "sourcePage": 162
+    },
+    {
+      "id": "spell:shocking-grasp",
+      "name": "Shocking Grasp",
+      "sourcePage": 162
+    },
+    {
+      "id": "spell:silence",
+      "name": "Silence",
+      "sourcePage": 162
+    },
+    {
+      "id": "spell:silent-image",
+      "name": "Silent Image",
+      "sourcePage": 162
+    },
+    {
+      "id": "spell:simulacrum",
+      "name": "Simulacrum",
+      "sourcePage": 162
+    },
+    {
+      "id": "spell:sleep",
+      "name": "Sleep",
+      "sourcePage": 163
+    },
+    {
+      "id": "spell:sleet-storm",
+      "name": "Sleet Storm",
+      "sourcePage": 163
+    },
+    {
+      "id": "spell:slow",
+      "name": "Slow",
+      "sourcePage": 163
+    },
+    {
+      "id": "spell:sorcerous-burst",
+      "name": "Sorcerous Burst",
+      "sourcePage": 163
+    },
+    {
+      "id": "spell:spare-the-dying",
+      "name": "Spare the Dying",
+      "sourcePage": 163
+    },
+    {
+      "id": "spell:speak-with-animals",
+      "name": "Speak with Animals",
+      "sourcePage": 164
+    },
+    {
+      "id": "spell:speak-with-dead",
+      "name": "Speak with Dead",
+      "sourcePage": 164
+    },
+    {
+      "id": "spell:speak-with-plants",
+      "name": "Speak with Plants",
+      "sourcePage": 164
+    },
+    {
+      "id": "spell:spider-climb",
+      "name": "Spider Climb",
+      "sourcePage": 164
+    },
+    {
+      "id": "spell:spike-growth",
+      "name": "Spike Growth",
+      "sourcePage": 164
+    },
+    {
+      "id": "spell:spirit-guardians",
+      "name": "Spirit Guardians",
+      "sourcePage": 164
+    },
+    {
+      "id": "spell:spiritual-weapon",
+      "name": "Spiritual Weapon",
+      "sourcePage": 165
+    },
+    {
+      "id": "spell:starry-wisp",
+      "name": "Starry Wisp",
+      "sourcePage": 165
+    },
+    {
+      "id": "spell:stinking-cloud",
+      "name": "Stinking Cloud",
+      "sourcePage": 165
+    },
+    {
+      "id": "spell:stone-shape",
+      "name": "Stone Shape",
+      "sourcePage": 165
+    },
+    {
+      "id": "spell:stoneskin",
+      "name": "Stoneskin",
+      "sourcePage": 165
+    },
+    {
+      "id": "spell:storm-of-vengeance",
+      "name": "Storm of Vengeance",
+      "sourcePage": 165
+    },
+    {
+      "id": "spell:suggestion",
+      "name": "Suggestion",
+      "sourcePage": 166
+    },
+    {
+      "id": "spell:summon-dragon",
+      "name": "Summon Dragon",
+      "sourcePage": 166
+    },
+    {
+      "id": "spell:sunbeam",
+      "name": "Sunbeam",
+      "sourcePage": 166
+    },
+    {
+      "id": "spell:sunburst",
+      "name": "Sunburst",
+      "sourcePage": 167
+    },
+    {
+      "id": "spell:symbol",
+      "name": "Symbol",
+      "sourcePage": 167
+    },
+    {
+      "id": "spell:telekinesis",
+      "name": "Telekinesis",
+      "sourcePage": 167
+    },
+    {
+      "id": "spell:telepathic-bond",
+      "name": "Telepathic Bond",
+      "sourcePage": 168
+    },
+    {
+      "id": "spell:teleport",
+      "name": "Teleport",
+      "sourcePage": 168
+    },
+    {
+      "id": "spell:teleportation-circle",
+      "name": "Teleportation Circle",
+      "sourcePage": 168
+    },
+    {
+      "id": "spell:thaumaturgy",
+      "name": "Thaumaturgy",
+      "sourcePage": 169
+    },
+    {
+      "id": "spell:thunderwave",
+      "name": "Thunderwave",
+      "sourcePage": 169
+    },
+    {
+      "id": "spell:time-stop",
+      "name": "Time Stop",
+      "sourcePage": 169
+    },
+    {
+      "id": "spell:tiny-hut",
+      "name": "Tiny Hut",
+      "sourcePage": 169
+    },
+    {
+      "id": "spell:tongues",
+      "name": "Tongues",
+      "sourcePage": 169
+    },
+    {
+      "id": "spell:transport-via-plants",
+      "name": "Transport via Plants",
+      "sourcePage": 170
+    },
+    {
+      "id": "spell:tree-stride",
+      "name": "Tree Stride",
+      "sourcePage": 170
+    },
+    {
+      "id": "spell:true-polymorph",
+      "name": "True Polymorph",
+      "sourcePage": 170
+    },
+    {
+      "id": "spell:true-resurrection",
+      "name": "True Resurrection",
+      "sourcePage": 170
+    },
+    {
+      "id": "spell:true-seeing",
+      "name": "True Seeing",
+      "sourcePage": 171
+    },
+    {
+      "id": "spell:true-strike",
+      "name": "True Strike",
+      "sourcePage": 171
+    },
+    {
+      "id": "spell:tsunami",
+      "name": "Tsunami",
+      "sourcePage": 171
+    },
+    {
+      "id": "spell:unseen-servant",
+      "name": "Unseen Servant",
+      "sourcePage": 171
+    },
+    {
+      "id": "spell:vampiric-touch",
+      "name": "Vampiric Touch",
+      "sourcePage": 171
+    },
+    {
+      "id": "spell:vicious-mockery",
+      "name": "Vicious Mockery",
+      "sourcePage": 171
+    },
+    {
+      "id": "spell:vitriolic-sphere",
+      "name": "Vitriolic Sphere",
+      "sourcePage": 172
+    },
+    {
+      "id": "spell:wall-of-fire",
+      "name": "Wall of Fire",
+      "sourcePage": 172
+    },
+    {
+      "id": "spell:wall-of-force",
+      "name": "Wall of Force",
+      "sourcePage": 172
+    },
+    {
+      "id": "spell:wall-of-ice",
+      "name": "Wall of Ice",
+      "sourcePage": 172
+    },
+    {
+      "id": "spell:wall-of-stone",
+      "name": "Wall of Stone",
+      "sourcePage": 173
+    },
+    {
+      "id": "spell:wall-of-thorns",
+      "name": "Wall of Thorns",
+      "sourcePage": 173
+    },
+    {
+      "id": "spell:warding-bond",
+      "name": "Warding Bond",
+      "sourcePage": 173
+    },
+    {
+      "id": "spell:water-breathing",
+      "name": "Water Breathing",
+      "sourcePage": 173
+    },
+    {
+      "id": "spell:water-walk",
+      "name": "Water Walk",
+      "sourcePage": 173
+    },
+    {
+      "id": "spell:web",
+      "name": "Web",
+      "sourcePage": 174
+    },
+    {
+      "id": "spell:weird",
+      "name": "Weird",
+      "sourcePage": 174
+    },
+    {
+      "id": "spell:wind-walk",
+      "name": "Wind Walk",
+      "sourcePage": 174
+    },
+    {
+      "id": "spell:wind-wall",
+      "name": "Wind Wall",
+      "sourcePage": 174
+    },
+    {
+      "id": "spell:wish",
+      "name": "Wish",
+      "sourcePage": 175
+    },
+    {
+      "id": "spell:word-of-recall",
+      "name": "Word of Recall",
+      "sourcePage": 175
+    },
+    {
+      "id": "spell:zone-of-truth",
+      "name": "Zone of Truth",
+      "sourcePage": 175
+    }
+  ]
+}

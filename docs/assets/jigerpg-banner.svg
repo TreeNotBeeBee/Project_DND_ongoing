@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="320" viewBox="0 0 1200 320" role="img" aria-labelledby="title description">
+  <title id="title">JigeRPG — 本机保存世界，与伙伴同步冒险</title>
+  <desc id="description">暗蓝与金色的 JigeRPG 品牌横幅，左侧为原创二十面骰几何图案，右侧为抽象网格棋盘。Windows x64 开发预览版，规则基准为 SRD 5.2.1。</desc>
+  <defs>
+    <linearGradient id="background" x2="1" y2="1"><stop stop-color="#111722"/><stop offset="1" stop-color="#1c2634"/></linearGradient>
+    <linearGradient id="gold" x2="1" y2="1"><stop stop-color="#eed7a2"/><stop offset="1" stop-color="#ad8951"/></linearGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#a5b8d1" stroke-opacity=".09"/></pattern>
+  </defs>
+  <rect width="1200" height="320" rx="20" fill="url(#background)"/>
+  <rect x="1" y="1" width="1198" height="318" rx="19" fill="none" stroke="#445064" stroke-opacity=".7"/>
+  <path d="M0 282H1200" stroke="#d4b67e" stroke-opacity=".18"/>
+  <circle cx="126" cy="141" r="100" fill="none" stroke="#d4b67e" stroke-opacity=".09"/>
+  <circle cx="126" cy="141" r="82" fill="none" stroke="#d4b67e" stroke-opacity=".16"/>
+  <path d="M126 60 201 106 180 190H72L51 106Z" fill="#d4b67e" fill-opacity=".04" stroke="url(#gold)" stroke-width="2.5"/>
+  <path d="m126 60-41 80 41 50 41-50Zm-75 46 34 34-13 50m129-84-34 34 13 50M85 140h82" fill="none" stroke="url(#gold)" stroke-width="1.8"/>
+  <path d="m225 66 4 11 11 4-11 4-4 11-4-11-11-4 11-4Z" fill="#d4b67e" opacity=".6"/>
+  <text x="264" y="67" fill="#cbb27f" font-family="Segoe UI,Microsoft YaHei,sans-serif" font-size="12" letter-spacing="4">A TABLE. A PARTY. A THOUSAND STORIES.</text>
+  <text x="260" y="144" fill="#edf0f4" font-family="Georgia,Times New Roman,serif" font-size="70" letter-spacing="-2">Jige<tspan fill="#d4b67e">RPG</tspan></text>
+  <text x="264" y="188" fill="#b3c0d3" font-family="Segoe UI,Microsoft YaHei,sans-serif" font-size="22" letter-spacing="2">本机保存世界，与伙伴同步冒险</text>
+  <g font-family="Segoe UI,Microsoft YaHei,sans-serif" font-size="12">
+    <rect x="264" y="219" width="118" height="29" rx="6" fill="#d4b67e" fill-opacity=".1" stroke="#d4b67e" stroke-opacity=".24"/>
+    <text x="323" y="238" fill="#d9c397" text-anchor="middle">SRD 5.2.1 · 2024</text>
+    <rect x="393" y="219" width="102" height="29" rx="6" fill="#8ab6a1" fill-opacity=".07" stroke="#8ab6a1" stroke-opacity=".2"/>
+    <text x="444" y="238" fill="#a4c6b6" text-anchor="middle">实时协作</text>
+    <rect x="506" y="219" width="116" height="29" rx="6" fill="#94a9cb" fill-opacity=".07" stroke="#94a9cb" stroke-opacity=".2"/>
+    <text x="564" y="238" fill="#afc0da" text-anchor="middle">本机 SQLite 存档</text>
+  </g>
+  <g transform="translate(833 39)">
+    <rect width="310" height="218" rx="12" fill="#101722" stroke="#3b4a60"/>
+    <text x="18" y="27" fill="#8b9db7" font-family="Segoe UI,sans-serif" font-size="10" letter-spacing="2">THE ADVENTURE TABLE</text>
+    <circle cx="287" cy="22" r="3" fill="#94bfa5"/>
+    <rect x="15" y="42" width="280" height="160" rx="5" fill="#1b2431"/>
+    <rect x="15" y="42" width="280" height="160" rx="5" fill="url(#grid)"/>
+    <path d="M95 42v80h80" fill="none" stroke="#8d9fb8" stroke-width="4"/>
+    <rect x="175" y="122" width="80" height="40" fill="#c5aa75" fill-opacity=".2" stroke="#c5aa75" stroke-opacity=".3"/>
+    <circle cx="55" cy="82" r="17" fill="#29413d" stroke="#98c3aa" stroke-width="2"/>
+    <path d="m55 72 3 7 7 3-7 3-3 7-3-7-7-3 7-3Z" fill="#98c3aa"/>
+    <rect x="38" y="107" width="34" height="3" rx="1.5" fill="#91b9a0"/>
+    <circle cx="135" cy="162" r="17" fill="#393443" stroke="#b4a4d3" stroke-width="2"/>
+    <path d="m135 153 7 9-7 9-7-9Z" fill="none" stroke="#b4a4d3" stroke-width="1.5"/>
+    <rect x="118" y="187" width="34" height="3" rx="1.5" fill="#a998c6"/>
+    <circle cx="255" cy="82" r="23" fill="#43323b" stroke="#c09aa4" stroke-width="2"/>
+    <path d="m247 74 16 16m-16 0 16-16" stroke="#c09aa4" stroke-width="2"/>
+    <rect x="232" y="114" width="46" height="3" rx="1.5" fill="#8d535d"/>
+    <rect x="232" y="114" width="29" height="3" rx="1.5" fill="#c09aa4"/>
+  </g>
+  <text x="40" y="305" fill="#8192ac" font-family="Segoe UI,Microsoft YaHei,sans-serif" font-size="11" letter-spacing="1">WINDOWS x64</text>
+  <text x="1160" y="305" fill="#c9ad79" text-anchor="end" font-family="Segoe UI,Microsoft YaHei,sans-serif" font-size="11" letter-spacing="1">开发预览 · 持续构建中</text>
+</svg>

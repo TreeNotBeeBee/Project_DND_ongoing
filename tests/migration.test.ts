@@ -1,0 +1,33 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {migrateLegacy,createGameState,createActor,projectState} from '../src/engine/index.ts';
+test('legacy migration copies every actor as draft, retains original bytes, and uses stable ids',()=>{
+  const card={name:'Mage',strength:999,intelligence:16,job:'Archmage',hp:999,mp:800,items:[{name:'Longsword',qty:1},{name:'Unmapped',qty:2}]};
+  const raw=JSON.stringify(card),payload={format:'jigerpg-legacy-storage',version:1,raw:{jigerpg_char_abc:raw,jigerpg_charlist_v04:'[]'}};
+  const a=migrateLegacy(payload,'abcdef0123456789'),b=migrateLegacy(payload,'abcdef0123456789');assert.equal(a.actors[0].id,b.actors[0].id);assert.equal(a.actors[0].draft,true);assert.equal(a.actors[0].abilities.str,10);assert.equal(a.actors[0].abilities.int,16);assert.equal(a.actors[0].inventory.length,1);assert.equal((a.report.original as any).raw.jigerpg_char_abc,raw);assert.ok(a.actors[0].migrationIssues!.some(x=>x.includes('Unmapped')));assert.deepEqual(card,JSON.parse(raw));
+});
+test('account import preserves all original unmapped data and companion ownership clues',()=>{const payload={format:'jigerpg-account',characters:{hero:{name:'Hero'},pet:{name:'Pet',type:'companion',ownerId:'hero',customStats:[{name:'Shield',val:30}]}}};const out=migrateLegacy(payload,'abcdef012345');assert.equal(out.actors.length,2);assert.equal(out.actors[1].kind,'companion');assert.equal(out.actors[1].choices!.legacyOwnerId,out.actors[0].id);assert.deepEqual(out.report.original,payload);});
+
+test('malformed characters or embedded companions reject the whole batch, preserving input unchanged',()=>{
+  for(const payload of [{characters:{good:{name:'Good'},bad:null}},{characters:{good:{name:'Good',companions:[null]}}},{characters:[]},{format:'jigerpg-raw-backup',rawStorage:{jigerpg_char_good:'{"name":"Good"}',jigerpg_char_bad:'{broken'}}]){
+    const original=structuredClone(payload);assert.throws(()=>migrateLegacy(payload,'abcdef012345'),{code:'INVALID_IMPORT'});assert.deepEqual(payload,original);
+  }
+});
+test('long legacy IDs never collide and canonical key reordering preserves IDs and parent mapping',()=>{
+  const first='a'.repeat(120)+'1',second='a'.repeat(120)+'2';
+  const a=migrateLegacy({characters:{[first]:{name:'Parent'},[second]:{name:'Pet',type:'companion',ownerId:first}}},'abcdef012345');
+  const b=migrateLegacy({characters:{[second]:{name:'Pet',type:'companion',ownerId:first},[first]:{name:'Parent'}}},'abcdef012345');
+  assert.equal(new Set(a.actors.map(actor=>actor.id)).size,2);assert.equal(a.report.version,3);
+  for(const actor of a.actors)assert.equal(actor.id,b.actors.find(other=>other.name===actor.name)?.id);
+  assert.equal(a.actors[1].choices!.parentActorId,a.actors[0].id);
+});
+
+test('raw storage character keys remain ordinary data even when named __proto__',()=>{
+  const payload={format:'jigerpg-raw-backup',rawStorage:{jigerpg_char___proto__:'{"name":"Odd ID"}'}};
+  const out=migrateLegacy(payload,'abcdef012345');assert.equal(out.actors.length,1);assert.equal(out.actors[0].name,'Odd ID');assert.equal(out.report.actors[0].oldId,'__proto__');
+  assert.throws(()=>migrateLegacy({...payload,characters:[]},'abcdef012345'),{code:'INVALID_IMPORT'});
+});
+test('player projection removes hidden actors, secret events and other member choices without mutating authoritative state',()=>{const s=createGameState('Visibility'),a=createActor({id:'own',ownerId:'me',name:'Own'}),hidden=createActor({id:'hidden',ownerId:'gm',hidden:true,name:'Secret'}),other=createActor({id:'other',ownerId:'them',name:'Other',notes:'secret',choices:{private:'secret'}});s.actors=[a,hidden,other];s.events=[{id:'e',operationId:'o',sequence:1,type:'note',message:'secret',timestamp:'x',gmOnly:true},{id:'e2',operationId:'o',sequence:2,type:'note',message:'hidden',actorId:'hidden',timestamp:'x'}];s.choices=[{id:'c',actorId:'other',ownerId:'them',kind:'test',prompt:'secret',options:[],payload:{secret:1}}];const out=projectState(s,{id:'me',name:'Player',role:'player'});assert.equal(out.actors.length,2);assert.equal(out.actors[1].notes,'');assert.equal(out.actors[1].choices,undefined);assert.equal(out.events.length,0);assert.equal(out.choices.length,0);assert.equal(s.actors.length,3);assert.deepEqual(projectState(s,{id:'gm',name:'GM',role:'gm'}),s);});
+test('raw backup wrappers and embedded companions preserve exact data and restore parent relations without duplicates',()=>{const parent={id:'hero',name:'Hero',companions:[{id:'pet',name:'Pet'},{name:'Nested pet'}]},raw=JSON.stringify(parent);const payload={format:'jigerpg-raw-backup',rawStorage:{jigerpg_char_hero:raw,jigerpg_char_pet:JSON.stringify({id:'pet',type:'companion',ownerId:'hero',name:'Pet'})}};const out=migrateLegacy(payload,'abcdef012345');assert.equal(out.actors.length,3);const hero=out.actors.find(a=>a.name==='Hero')!;for(const pet of out.actors.filter(a=>a.kind==='companion'))assert.equal(pet.choices!.parentActorId,hero.id);assert.equal((out.report.original as any).rawStorage.jigerpg_char_hero,raw);});
+test('hidden initiative entries preserve the visible active actor and use -1 for an unseen active turn',()=>{const s=createGameState('Hidden initiative');s.actors=[createActor({id:'hidden',ownerId:'gm',hidden:true}),createActor({id:'player',ownerId:'me'})];s.combat={active:true,round:1,turn:1,order:['hidden','player'],budgets:{}};const member={id:'me',name:'Me',role:'player' as const};let out=projectState(s,member);assert.deepEqual(out.combat.order,['player']);assert.equal(out.combat.turn,0);s.combat.turn=0;out=projectState(s,member);assert.equal(out.combat.turn,-1);});
+test('fog projection enforces server line of sight and strips deferred-choice secret payloads',()=>{const s=createGameState('Fog'),a=createActor({id:'a',ownerId:'me',draft:false,position:{x:0,y:0}}),enemy=createActor({id:'enemy',ownerId:'gm',kind:'monster',draft:false,name:'Secret Dragon',position:{x:2,y:0}});s.actors=[a,enemy];s.scene.fog=true;s.scene.walls=[{id:'wall',a:{x:1,y:0},b:{x:1,y:5}}];s.events=[{id:'e',sequence:1,operationId:'o',type:'attack',actorId:'a',message:'A hits Secret Dragon',timestamp:'x'}];s.choices=[{id:'choice',actorId:'a',ownerId:'me',kind:'shield-reaction',prompt:'Shield against Secret Dragon?',options:[],payload:{attackerId:'enemy',secretAC:30}}];const player={id:'me',name:'Me',role:'player' as const};let out=projectState(s,player);assert.equal(out.actors.length,1);assert.equal(out.events.length,0);assert.doesNotMatch(out.choices[0].prompt,/Secret Dragon/);assert.deepEqual(out.choices[0].payload,{});s.scene.walls[0].door=true;s.scene.walls[0].open=true;out=projectState(s,player);assert.equal(out.actors.length,2);});

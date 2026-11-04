@@ -1,0 +1,37 @@
+name: Windows validation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, verified 2026-11-04
+      - name: Install the project runtime and browser
+        run: |
+          ./scripts/setup.ps1 -LocalOnly -Browsers
+          if ($LASTEXITCODE -ne 0) { throw 'Bootstrap failed' }
+          $runtime = Get-Content runtime.json -Raw | ConvertFrom-Json
+          $nodeDirectory = Join-Path $PWD ('.tools/node-v' + $runtime.node.version + '-win-x64')
+          $nodeDirectory | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Run behavior and multi-client browser tests
+        run: |
+          npm test
+          if ($LASTEXITCODE -ne 0) { throw 'Tests failed' }
+      - name: Build production assets
+        run: |
+          npm run build
+          if ($LASTEXITCODE -ne 0) { throw 'Build failed' }
+      - name: Verify the actual Windows launcher
+        run: node scripts/verify-launcher.mjs

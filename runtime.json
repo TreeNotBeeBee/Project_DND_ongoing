@@ -1,0 +1,6 @@
+{
+  "node": { "version": "26.13.0", "platform": "win-x64", "sha256": "dcc60d59a0746999f99064a01c020445d54d84228c691cdbf25b49ac3b59150a" },
+  "cloudflared": { "version": "2026.10.7", "file": "cloudflared-windows-amd64.exe", "sha256": "2493dbc168923bb3e59e5e7716f71deced92992eea9acd6e9d74f84ac7751343" },
+  "verifiedAt": "2026-11-04",
+  "sources": ["https://nodejs.org/en/about/previous-releases", "https://github.com/cloudflare/cloudflared/releases/tag/2026.10.7", "https://registry.npmjs.org/"]
+}
