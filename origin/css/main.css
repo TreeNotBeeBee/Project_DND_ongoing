@@ -1,0 +1,2971 @@
+:root {
+    --bg: #171923;
+    --p: #252b38;
+    --p2: #303847;
+    --line: #485264;
+    --gold: #e5bd79;
+    --txt: #f1eee8;
+    --muted: #adb5c2;
+    --green: #65bd88;
+    --blue: #63a8e0;
+    --red: #dd6868;
+    --orange: #e29b58;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--txt);
+    font: 14px "Microsoft YaHei", sans-serif;
+}
+
+button,
+input,
+select,
+textarea {
+    font: inherit;
+}
+
+button {
+    background: #394354;
+    color: var(--txt);
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    padding: 7px 10px;
+    cursor: pointer;
+    transition: 0.15s;
+}
+
+button:hover {
+    border-color: var(--gold);
+    color: var(--gold);
+}
+
+button.danger:hover {
+    border-color: var(--red);
+    color: var(--red);
+}
+
+button.orange:hover {
+    border-color: var(--orange);
+    color: var(--orange);
+}
+
+input,
+select,
+textarea {
+    background: #1b202b;
+    color: var(--txt);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 7px;
+    width: 100%;
+    min-width: 0;
+}
+
+textarea {
+    resize: vertical;
+    min-height: 60px;
+}
+
+.app {
+    max-width: 1480px;
+    margin: auto;
+    padding: 14px;
+}
+
+header,
+.bar,
+.row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 9px;
+    flex-wrap: wrap;
+}
+
+.brand {
+    font-size: 22px;
+    font-weight: bold;
+    color: var(--gold);
+}
+
+.muted,
+.small {
+    color: var(--muted);
+    font-size: 11px;
+}
+
+.tabs {
+    display: flex;
+    gap: 6px;
+    margin: 13px 0;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 8px;
+    flex-wrap: wrap;
+}
+
+.tab {
+    background: transparent;
+    border-color: transparent;
+    color: var(--muted);
+}
+
+.tab.active {
+    background: #423b42;
+    color: var(--gold);
+    border-color: #806744;
+}
+
+.page {
+    display: none;
+}
+
+.page.active {
+    display: block;
+}
+
+.dashboard {
+    display: grid;
+    grid-template-columns: 260px minmax(260px, 1fr) minmax(260px, 1fr);
+    gap: 10px;
+}
+
+.panel {
+    background: var(--p);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 12px;
+    min-width: 0;
+}
+
+.panel h2 {
+    font-size: 14px;
+    color: var(--gold);
+    margin: 0 0 10px;
+}
+
+.profile {
+    display: flex;
+    gap: 9px;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.avatar-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    flex: none;
+}
+
+.avatar {
+    position: relative;
+    width: 65px;
+    height: 65px;
+    border-radius: 9px;
+    background: #3b4352;
+    border: 1px dashed #927a53;
+    display: grid;
+    place-items: center;
+    font-size: 27px;
+    color: var(--gold);
+    overflow: hidden;
+    cursor: pointer;
+}
+
+.avatar img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: none;
+}
+
+.avatar.has-img img {
+    display: block;
+}
+
+.avatar.has-img #avatarFallback {
+    display: none;
+}
+
+.avatar-hint {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 2px 0;
+    background: rgba(0, 0, 0, 0.62);
+    color: #fff;
+    font-size: 10px;
+    text-align: center;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+.avatar:hover .avatar-hint {
+    opacity: 1;
+}
+
+.avatar.drag {
+    border-color: var(--gold);
+    box-shadow: 0 0 0 2px rgba(229, 189, 121, 0.35);
+}
+
+.avatar-reset {
+    padding: 1px 5px;
+    font-size: 10px;
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+}
+
+.identity {
+    display: grid;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+}
+
+.identity input:first-child {
+    font-weight: bold;
+}
+
+/* 职业行：输入框 + 其他修正按钮 */
+.job-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.job-row input {
+    flex: 1;
+    min-width: 0;
+}
+
+.job-row .small {
+    white-space: nowrap;
+}
+
+.twocol {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 7px;
+}
+
+.threecol {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 7px;
+}
+
+.fourcol {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 7px;
+}
+
+.label {
+    font-size: 10px;
+    color: var(--muted);
+    display: block;
+    margin: 0 0 3px;
+}
+
+.hpbar,
+.mpbar {
+    height: 9px;
+    background: #454d5c;
+    border-radius: 20px;
+    overflow: hidden;
+    margin: 7px 0;
+}
+
+.hpfill {
+    height: 100%;
+    background: var(--green);
+    width: 100%;
+}
+
+.mpfill {
+    height: 100%;
+    background: var(--blue);
+    width: 100%;
+}
+
+.hptext,
+.mptext {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* 血条染色：颜色选择器 + 一键恢复默认 */
+.hp-color-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--muted);
+}
+
+.hp-color-pick {
+    width: 30px;
+    height: 18px;
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: none;
+    cursor: pointer;
+}
+
+.hp-color-reset {
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.hp-color-reset:hover {
+    color: var(--gold);
+}
+
+.stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 7px;
+}
+
+.stat {
+    background: var(--p2);
+    border-radius: 8px;
+    padding: 7px;
+    text-align: center;
+}
+
+.stat input {
+    text-align: center;
+    font-size: 16px;
+    font-weight: bold;
+    padding: 3px;
+}
+
+.stat span {
+    display: block;
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 2px;
+}
+
+.stat-bonus {
+    font-size: 10px;
+    color: var(--orange);
+}
+
+.stat-total {
+    font-size: 18px;
+    font-weight: bold;
+    color: var(--gold);
+    line-height: 1.1;
+}
+
+.stat input.native {
+    font-size: 12px;
+    font-weight: normal;
+    width: 60px;
+    padding: 1px 2px;
+}
+
+.derived {
+    font-size: 16px;
+    font-weight: bold;
+    padding: 3px;
+    text-align: center;
+}
+
+.bonus-section {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 8px;
+    margin-top: 8px;
+}
+
+.bonus-section summary {
+    cursor: pointer;
+    color: var(--gold);
+    font-size: 12px;
+}
+
+.bonus-sum {
+    color: var(--accent);
+    font-size: 11px;
+    margin-left: 6px;
+}
+
+.bonus-group {
+    margin-top: 6px;
+    padding: 6px 8px;
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.level-table-wrap {
+    overflow-x: auto;
+    margin-top: 6px;
+}
+
+.level-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+}
+
+.level-table th,
+.level-table td {
+    padding: 3px;
+    text-align: center;
+    border-bottom: 1px solid var(--line);
+}
+
+.level-table th {
+    color: var(--muted);
+    font-weight: normal;
+}
+
+.level-table input {
+    width: 56px;
+    text-align: center;
+    padding: 3px;
+}
+
+.level-table button {
+    padding: 2px 7px;
+    font-size: 10px;
+}
+
+.mini {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.mini div {
+    background: #1e2430;
+    border-radius: 7px;
+    text-align: center;
+    padding: 7px;
+}
+
+.mini b {
+    display: block;
+    color: var(--gold);
+    font-size: 15px;
+}
+
+.mini span {
+    font-size: 10px;
+    color: var(--muted);
+}
+
+.gear {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 7px;
+}
+
+.slot {
+    background: var(--p2);
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    padding: 7px;
+    min-width: 0;
+}
+
+.slot i {
+    font-style: normal;
+    font-size: 19px;
+}
+
+.slot label {
+    display: block;
+    font-size: 10px;
+    color: var(--muted);
+    margin: 3px 0;
+}
+
+.slot .slotname {
+    display: block;
+    width: 100%;
+    font-size: 11px;
+    font-weight: bold;
+    margin: 3px 0;
+    padding: 1px 3px;
+}
+
+/* 自定义栏的可穿戴分类下拉 */
+.slot .slotcat {
+    display: block;
+    width: 100%;
+    font-size: 10px;
+    margin: 0 0 3px;
+    padding: 4px 5px;
+}
+
+.slot .slot-del {
+    position: relative;
+    float: right;
+    color: var(--red);
+    cursor: pointer;
+    font-size: 11px;
+}
+
+.slot select {
+    font-size: 10px;
+    padding: 5px;
+}
+
+.items {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 7px;
+}
+
+.item {
+    background: var(--p2);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 8px;
+}
+
+.itemtop {
+    display: flex;
+    justify-content: space-between;
+}
+
+.itemicon {
+    font-size: 22px;
+}
+
+.qty {
+    font-size: 10px;
+    color: var(--gold);
+}
+
+.itemname {
+    font-weight: bold;
+    font-size: 12px;
+    margin: 5px 0;
+    overflow-wrap: anywhere;
+}
+
+.itemdesc {
+    font-size: 10px;
+    color: var(--muted);
+    min-height: 24px;
+}
+
+.itemcat {
+    font-size: 9px;
+    color: #8892a0;
+    margin: 2px 0;
+}
+
+/* ==== 背包载重 ==== */
+.carry-bar {
+    margin: 0 0 10px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--p2);
+}
+
+.carry-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.carry-num {
+    font-weight: bold;
+    color: var(--gold);
+}
+
+.carry-num.over {
+    color: var(--red);
+}
+
+.carry-track {
+    margin-top: 6px;
+    height: 6px;
+    background: #1e2430;
+    border-radius: 999px;
+    overflow: hidden;
+}
+
+.carry-fill {
+    height: 100%;
+    background: var(--gold);
+    border-radius: 999px;
+    transition: width .2s;
+}
+
+.carry-fill.over {
+    background: var(--red);
+}
+
+.itemweight {
+    color: var(--muted);
+    font-size: 9px;
+    margin-left: 4px;
+}
+
+.itemcap {
+    color: var(--green);
+    font-size: 9px;
+    margin-left: 4px;
+}
+
+/* 载重设置：基础负重 / 力量加成上限（每个角色独立，马车类随从可填大数值） */
+.carry-settings {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 0 0 10px;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.carry-settings label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.carry-settings input {
+    width: 76px;
+}
+
+.carry-detail {
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 4px;
+}
+
+.actions {
+    display: flex;
+    gap: 4px;
+    margin-top: 6px;
+}
+
+.actions button {
+    font-size: 10px;
+    padding: 4px 6px;
+    flex: 1;
+}
+
+.skill {
+    padding: 9px;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.skill-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.skill-desc {
+    font-size: 11px;
+    color: var(--muted);
+}
+
+.buff-item {
+    padding: 8px;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.buff-info {
+    flex: 1;
+}
+
+.buff-name {
+    font-weight: bold;
+    font-size: 12px;
+}
+
+.buff-meta {
+    font-size: 10px;
+    color: var(--orange);
+}
+
+.buff-desc {
+    font-size: 11px;
+    color: var(--muted);
+}
+
+/* 快速施加库 */
+.quick-buff-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin: 6px 0;
+}
+
+.buff-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: #1e2430;
+    border: 1px solid var(--line);
+    color: var(--txt);
+    font-size: 13px;
+    cursor: pointer;
+    user-select: none;
+    line-height: 1.4;
+}
+
+.buff-chip:hover {
+    border-color: var(--gold);
+    color: var(--gold);
+}
+
+.buff-chip b {
+    font-size: 11px;
+    color: var(--gold);
+}
+
+.buff-chip i {
+    font-style: normal;
+    font-size: 11px;
+    color: var(--red);
+    opacity: 0.55;
+}
+
+.buff-chip i:hover {
+    opacity: 1;
+}
+
+.buff-toast {
+    min-height: 17px;
+    font-size: 12px;
+    color: var(--gold);
+    opacity: 0;
+    transition: opacity 0.35s;
+}
+
+.quick-consume {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 6px;
+    margin: 8px 0;
+}
+
+.quick-slot {
+    background: #1e2430;
+    border: 1px dashed var(--line);
+    border-radius: 7px;
+    padding: 6px;
+    text-align: center;
+    min-height: 54px;
+    cursor: pointer;
+}
+
+.quick-slot.has {
+    border-style: solid;
+    border-color: var(--gold);
+}
+
+.quick-slot .qi {
+    font-size: 18px;
+}
+
+.quick-slot .qn {
+    font-size: 9px;
+    color: var(--txt);
+}
+
+.quick-slot .qq {
+    font-size: 9px;
+    color: var(--gold);
+}
+
+/* 「本回合行动」面板里的快捷条：快速技能 / 快速消耗品（复用 .buff-chip 胶囊样式） */
+.pa-quick {
+    margin-bottom: 8px;
+    min-width: 0;
+}
+
+.pa-quick .label {
+    margin-bottom: 2px;
+}
+
+.pa-quick .quick-chips {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin: 4px 0 0;
+    min-width: 0;
+    max-width: 100%;
+}
+
+/* 窄屏不溢出：chip 可换行、超长名字省略 */
+.pa-quick .buff-chip {
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pa-quick .pa-chip-empty {
+    color: var(--muted);
+    border-style: dashed;
+    cursor: default;
+}
+
+.pa-quick .pa-chip-empty:hover {
+    border-color: var(--line);
+    color: var(--muted);
+}
+
+.dice-panel {
+    background: #1e2430;
+    padding: 10px;
+    border-radius: 8px;
+}
+
+.dice-log {
+    max-height: 180px;
+    overflow: auto;
+    background: #171923;
+    padding: 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    margin-top: 8px;
+}
+
+.dice-log>div {
+    padding: 2px 0;
+    border-bottom: 1px solid #2c3240;
+}
+
+.combat-calc {
+    background: #1e2430;
+    padding: 10px;
+    border-radius: 8px;
+}
+
+.empty {
+    text-align: center;
+    color: var(--muted);
+    padding: 24px;
+}
+
+.foot {
+    margin-top: 10px;
+    color: var(--muted);
+    font-size: 10px;
+}
+
+.modal-wrap {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 99;
+    padding: 12px;
+}
+
+.modal {
+    background: var(--p);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 16px;
+    width: 100%;
+    max-width: 480px;
+    max-height: 90vh;
+    overflow: auto;
+}
+
+.modal h3 {
+    margin-top: 0;
+    color: var(--gold);
+}
+
+.modal-buttons {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+    justify-content: flex-end;
+}
+
+.hide {
+    display: none !important;
+}
+
+.bonus-form {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin: 8px 0;
+}
+
+/* ==== 其他修正（职业/血脉被动） ==== */
+.extra-mod-card {
+    background: var(--p2);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 8px 10px;
+    margin-bottom: 8px;
+}
+
+.extra-mod-card:hover {
+    border-color: var(--gold);
+}
+
+.extra-mod-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.extra-mod-icon {
+    width: 40px;
+    text-align: center;
+}
+
+.extra-mod-name {
+    width: 140px;
+    font-weight: bold;
+}
+
+.extra-mod-note {
+    width: 100%;
+    margin-top: 6px;
+    font-size: 12px;
+}
+
+.extra-mod-enabled {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--muted);
+    margin-left: auto;
+}
+
+.extra-mod-remove {
+    color: var(--red);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 0 2px;
+}
+
+.extra-mod-passive .bonus-form {
+    margin-top: 4px;
+}
+
+.extra-mod-passive .label {
+    margin-top: 2px;
+}
+
+/* ==== 随从/宠物卡片 ==== */
+.companion-card {
+    background: var(--p2);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 10px 12px;
+    transition: border-color 0.15s;
+}
+
+.companion-card:hover {
+    border-color: var(--gold);
+}
+
+.companion-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.companion-icon {
+    width: 34px;
+    height: 34px;
+    text-align: center;
+    font-size: 17px;
+    padding: 0;
+    border-radius: 8px;
+    background: #1e2430;
+    border: 1px solid var(--line);
+}
+
+.companion-name {
+    font-weight: bold;
+    width: 110px;
+}
+
+.companion-species {
+    width: 90px;
+}
+
+.companion-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+    flex-wrap: wrap;
+}
+
+.companion-combat {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--muted);
+    cursor: pointer;
+    user-select: none;
+}
+
+.companion-combat input {
+    width: auto;
+    margin: 0;
+}
+
+.companion-status {
+    font-weight: bold;
+    color: var(--muted);
+}
+
+.companion-status.on {
+    color: var(--green);
+}
+
+.companion-meta {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 5px;
+}
+
+.companion-vitals {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin: 7px 0 5px;
+}
+
+.companion-chip {
+    background: #1e2430;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 2px 9px;
+    font-size: 11px;
+    color: var(--txt);
+}
+
+.companion-chip b {
+    color: var(--gold);
+    font-weight: bold;
+}
+
+.companion-note {
+    font-size: 11px;
+    color: var(--muted);
+}
+
+.companion-note b {
+    color: var(--orange);
+    font-weight: normal;
+}
+
+/* 模式专属参数行：成长倍率 / 召唤物「吃成长倍率」与复制 / 形态说明 */
+.companion-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 7px;
+}
+
+.companion-scale {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--muted);
+}
+
+.companion-scale input {
+    width: 68px;
+    padding: 2px 6px;
+}
+
+.companion-tag {
+    font-size: 11px;
+    color: var(--muted);
+    background: #1e2430;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 2px 9px;
+}
+
+.companion-controls .small {
+    padding: 3px 9px;
+}
+
+/* 从随从页看主人名下的随从列表时的说明条 */
+.companion-list-hint {
+    font-size: 12px;
+    color: var(--muted);
+    margin: 0 0 8px 2px;
+}
+
+.companion-list-hint b {
+    color: var(--gold);
+    font-weight: 600;
+}
+
+.companion-remove {
+    color: var(--red);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 2px 5px;
+    border-radius: 6px;
+    line-height: 1;
+}
+
+.companion-remove:hover {
+    background: rgba(221, 104, 104, 0.14);
+}
+
+.companion-selfbar {
+    background: var(--p2);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin-bottom: 10px;
+}
+
+/* 身份设置槽：位于「背景&笔记」面板之后，与上一块拉开距离 */
+.companion-selfbar-slot {
+    margin-top: 10px;
+}
+
+.companion-selfbar-title {
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 6px;
+}
+
+/* ==== 卡片式角色选择器 ==== */
+.char-picker {
+    position: relative;
+}
+
+.char-picker-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 130px;
+    justify-content: space-between;
+}
+
+.char-picker-owner {
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: normal;
+}
+
+.char-picker-caret {
+    color: var(--gold);
+    font-size: 10px;
+}
+
+.char-picker-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    min-width: 220px;
+    max-height: 60vh;
+    overflow: auto;
+    background: var(--p);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 6px;
+    z-index: 50;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
+}
+
+.char-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 8px;
+    border-radius: 7px;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.char-row:hover {
+    background: var(--p2);
+}
+
+.char-row.active {
+    background: var(--p2);
+    color: var(--gold);
+    font-weight: bold;
+}
+
+.char-row.sub {
+    padding-left: 22px;
+    font-size: 12px;
+}
+
+.char-row-icon {
+    width: 18px;
+    text-align: center;
+    flex: none;
+}
+
+.char-row-name {
+    overflow-wrap: anywhere;
+}
+
+.char-sub-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 8px;
+    border-radius: 7px;
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 12px;
+    user-select: none;
+}
+
+.char-sub-toggle:hover {
+    background: var(--p2);
+    color: var(--gold);
+}
+
+.char-sub-toggle b {
+    color: var(--gold);
+    font-weight: normal;
+}
+
+.char-caret {
+    width: 10px;
+    display: inline-block;
+    flex: none;
+}
+
+.char-sub {
+    margin: 2px 0 2px 6px;
+    border-left: 1px dashed var(--line);
+    padding-left: 4px;
+}
+
+/* 主人卡：主人与其随从包在同一张卡内，随从默认折叠，角色记录仍各自独立 */
+.char-card {
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    padding: 2px;
+    margin-bottom: 4px;
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.char-card:last-child {
+    margin-bottom: 0;
+}
+
+.char-card.active {
+    border-color: var(--gold);
+    background: rgba(229, 189, 121, 0.06);
+}
+
+.char-card .char-sub {
+    margin: 2px 4px 4px 10px;
+}
+
+@media (max-width: 960px) {
+    .dashboard {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .profilepanel {
+        grid-column: 1/-1;
+    }
+
+    .quick-consume {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+@media (max-width: 600px) {
+    .app {
+        padding: 9px;
+    }
+
+    .dashboard {
+        grid-template-columns: 1fr;
+    }
+
+    .profilepanel {
+        grid-column: auto;
+    }
+
+    .threecol,
+    .fourcol {
+        grid-template-columns: 1fr;
+    }
+
+    .tabs {
+        gap: 3px;
+    }
+
+    .tab {
+        padding: 5px 6px;
+    }
+}
+
+/* ===== 主持人面板 ===== */
+.view-switch {
+    display: flex;
+    gap: 6px;
+    margin: 10px 0 4px;
+    flex-wrap: wrap;
+}
+
+.view-tab {
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--muted);
+    padding: 6px 16px;
+    border-radius: 999px;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.view-tab:hover {
+    border-color: var(--gold);
+    color: var(--gold);
+}
+
+.view-tab.active {
+    background: var(--gold);
+    color: #1b1f27;
+    border-color: var(--gold);
+}
+
+.gm-view {
+    display: none;
+}
+
+body.gm-mode .gm-view {
+    display: block;
+}
+
+.manage-view {
+    display: none;
+}
+
+body.manage-mode .manage-view {
+    display: block;
+}
+
+/* 主持人面板只读（非房主玩家）：能看不能改 */
+.gm-readonly-bar {
+    margin-bottom: 10px;
+    padding: 8px 12px;
+    border: 1px solid var(--blue);
+    border-radius: 10px;
+    background: var(--p2);
+    color: var(--blue);
+    font-size: 12px;
+}
+#gmView.gm-readonly input,
+#gmView.gm-readonly select,
+#gmView.gm-readonly textarea { opacity: .55; cursor: not-allowed; }
+#gmView.gm-readonly button { opacity: .45; cursor: not-allowed; }
+
+/* 主持人私有面板（伤害计算器 / 派发 Buff / 背包金币）：玩家身份在房间里时整块隐藏 */
+.panel.gm-private-hidden { display: none !important; }
+
+body.gm-mode nav.tabs,
+body.gm-mode section.page {
+    display: none !important;
+}
+
+body.gm-mode header .row {
+    display: none;
+}
+
+body.manage-mode nav.tabs,
+body.manage-mode section.page {
+    display: none !important;
+}
+
+body.manage-mode header .row {
+    display: none;
+}
+
+/* ===== 🌐 联机管理页 ===== */
+.link-view {
+    display: none;
+}
+
+body.link-mode .link-view {
+    display: block;
+}
+
+body.link-mode nav.tabs,
+body.link-mode section.page,
+body.link-mode #gmView,
+body.link-mode #charManageView {
+    display: none;
+}
+
+.link-view .panel {
+    max-width: 760px;
+    margin: 0 auto;
+}
+
+.link-lead {
+    color: var(--muted);
+    font-size: 12px;
+    margin-bottom: 10px;
+}
+
+.link-hint {
+    color: var(--muted);
+    font-size: 11px;
+    margin-top: 8px;
+    min-height: 14px;
+}
+
+.link-hint.warn {
+    color: var(--gold);
+    border: 1px solid var(--gold);
+    border-radius: 8px;
+    padding: 6px 9px;
+    margin-bottom: 10px;
+}
+
+.link-section {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--p2);
+    padding: 12px;
+}
+
+.link-section + .link-section {
+    margin-top: 14px;
+}
+
+.link-section-create {
+    border-left: 3px solid var(--gold);
+}
+
+.link-section-join {
+    border-left: 3px solid var(--blue);
+}
+
+.link-cols {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    align-items: start;
+}
+
+/* 两栏并排时，右列不需要相邻区块的上外边距（间距交给 grid gap） */
+.link-cols > .link-section + .link-section {
+    margin-top: 0;
+}
+
+.link-section-sub {
+    color: var(--muted);
+    font-size: 11px;
+    margin: -4px 0 10px;
+}
+
+.link-section-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--gold);
+    margin-bottom: 8px;
+}
+
+.link-field {
+    margin-bottom: 8px;
+}
+
+.link-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+}
+
+.link-msg {
+    color: var(--red);
+    font-size: 12px;
+    min-height: 16px;
+    margin-top: 4px;
+}
+
+.link-room-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+}
+
+.link-room-name-wrap {
+    min-width: 0;
+}
+
+.link-room-name {
+    display: block;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--gold);
+    word-break: break-word;
+}
+
+.link-role {
+    font-size: 12px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--p);
+    color: var(--muted);
+    white-space: nowrap;
+    flex: none;
+}
+
+.link-role.is-gm {
+    color: var(--gold);
+    border-color: var(--gold);
+}
+
+.link-code-box {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--p2);
+    margin-bottom: 8px;
+}
+
+.link-code-box .room-code-big {
+    font-size: 26px;
+    letter-spacing: 4px;
+}
+
+.link-meta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+
+.link-notice-send {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+}
+
+.link-notice-send input {
+    flex: 1 1 220px;
+    min-width: 0;
+}
+
+.link-leave {
+    margin-top: 14px;
+}
+
+@media (max-width: 720px) {
+    .link-cols {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 620px) {
+    .link-code-box {
+        gap: 6px;
+    }
+
+    .link-code-box .room-code-big {
+        font-size: 22px;
+        letter-spacing: 3px;
+    }
+
+    .link-actions button,
+    .link-notice-send button {
+        flex: 1 1 auto;
+    }
+}
+
+.gm-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 12px;
+    align-items: stretch;
+}
+
+/* 同一行的面板等高；面板内部用纵向 flex，列表占满剩余高度并在内部滚动 */
+.gm-grid > .panel {
+    display: flex;
+    flex-direction: column;
+    height: 420px;
+    min-height: 0;
+}
+
+/* 面板内容区吃满剩余高度：滑条跟着卡片一起变长，不会在下方留白 */
+.gm-grid > .panel > .gm-list,
+.gm-grid > .panel > .gm-log {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+/* 网格内由外层容器负责滚动，内部列表不再各自限高（否则会出现短滑条 + 空白） */
+.gm-grid .gm-scroll-list,
+.gm-grid .gm-bag-list,
+.gm-grid .gm-roll-list,
+.gm-grid .gm-preset-list {
+    max-height: none;
+    overflow: visible;
+    flex: none;
+}
+
+.gm-grid > .panel > .gm-log {
+    max-height: none;
+}
+
+.gm-grid > .panel > textarea {
+    flex: 1 1 auto;
+    min-height: 120px;
+}
+
+@media (max-width: 620px) {
+    .gm-grid > .panel {
+        height: auto;
+    }
+}
+
+.gm-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.gm-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 8px 10px;
+    background: var(--p2);
+}
+
+.gm-row:hover {
+    border-color: var(--gold);
+}
+
+.gm-name {
+    font-weight: 700;
+}
+
+.gm-sub {
+    font-size: 11px;
+    color: var(--muted);
+}
+
+.gm-hpbar {
+    flex: 1;
+    min-width: 80px;
+    height: 8px;
+    background: #454d5c;
+    border-radius: 20px;
+    overflow: hidden;
+}
+
+.gm-hpbar > div {
+    height: 100%;
+    background: var(--green, #6dd400);
+}
+
+.gm-hp {
+    font-size: 12px;
+    color: var(--gold);
+    white-space: nowrap;
+}
+
+.gm-row-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.gm-head {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex-wrap: wrap;
+    width: 100%;
+}
+
+.gm-icon {
+    width: 40px;
+    text-align: center;
+}
+
+.gm-name-input {
+    width: 130px;
+    font-weight: 700;
+}
+
+.gm-enemy input[type="number"] {
+    width: 64px;
+}
+
+.gm-enemy.dead {
+    opacity: 0.45;
+}
+
+.gm-enemy-note {
+    width: 100%;
+    font-size: 11px;
+    color: var(--muted);
+}
+
+.gm-remove {
+    color: var(--red);
+    cursor: pointer;
+    font-size: 14px;
+    margin-left: auto;
+}
+
+.gm-log {
+    max-height: 220px;
+}
+
+/* 参战随从行：比主角行缩进一层，颜色略淡 */
+.gm-companion-row {
+    margin-left: 18px;
+    border-left: 3px solid var(--blue);
+    background: linear-gradient(90deg, rgba(80, 140, 220, 0.10), var(--p2));
+    padding: 6px 10px;
+}
+
+.gm-companion-row .gm-name {
+    font-weight: 600;
+    font-size: 13px;
+}
+
+/* 主角形态（变身）是特例：顶格显示、金色边框，不再按随从缩进 */
+.gm-form-row {
+    margin-left: 0;
+    border-left: 3px solid var(--gold);
+    background: linear-gradient(90deg, rgba(212, 175, 55, 0.16), var(--p2));
+}
+
+.gm-form-row .gm-sub {
+    color: var(--gold);
+}
+
+/* 房间里的远端玩家：虚线蓝灰左框 + 轻背景，和本地角色行区分开，但保持同样的行距 */
+.gm-remote-row {
+    border-left: 3px dashed rgba(99, 168, 224, 0.65);
+    background: linear-gradient(90deg, rgba(99, 168, 224, 0.09), var(--p2));
+    padding: 8px 10px;
+}
+
+.gm-remote-row:hover {
+    border-color: var(--line);
+    border-left-color: var(--blue);
+}
+
+.gm-remote-row .gm-sub {
+    white-space: normal;
+}
+
+.gm-remote-row .gm-name {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+/* 远端玩家的参战随从：跟在成员行下面，多缩进一层，用浅灰辅助线表示从属关系，
+   不抢成员行那条蓝色虚线，也不额外加按钮（远端随从暂不支持改血） */
+.gm-remote-comp {
+    margin-left: 18px;
+    border-left: 2px solid var(--line);
+    background: linear-gradient(90deg, rgba(150, 160, 175, 0.07), var(--p2));
+    padding: 6px 10px;
+}
+
+.gm-remote-comp .gm-name {
+    font-weight: 600;
+    font-size: 13px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.gm-remote-comp .gm-sub {
+    white-space: normal;
+}
+
+/* 在线状态点：8px 圆点，在线绿、离线灰 */
+.gm-dot {
+    display: inline-block;
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+}
+
+.gm-dot.online {
+    background: var(--green);
+    box-shadow: 0 0 0 3px rgba(101, 189, 136, 0.16);
+}
+
+/* 状态小标（如「未参战」）：浅灰底、11px、圆角，只做提示不抢主信息 */
+.gm-tag {
+    display: inline-block;
+    flex: none;
+    padding: 1px 6px;
+    border-radius: 999px;
+    font-size: 11px;
+    line-height: 1.5;
+    background: rgba(150, 160, 175, 0.14);
+    color: var(--muted);
+    border: 1px solid rgba(150, 160, 175, 0.28);
+    white-space: nowrap;
+}
+
+.gm-tag.off {
+    background: rgba(150, 160, 175, 0.14);
+    color: var(--muted);
+    border-color: rgba(150, 160, 175, 0.28);
+    opacity: 0.9;
+}
+
+/* 窄屏：远端行头部允许换行，按钮整行排开不挤出面板 */
+@media (max-width: 620px) {
+    .gm-remote-row .gm-name {
+        flex: 1 1 auto;
+    }
+
+    .gm-remote-row .gm-row-actions {
+        margin-left: 0;
+        width: 100%;
+        flex-wrap: wrap;
+    }
+
+    .gm-remote-row .gm-row-actions button {
+        flex: 1 1 auto;
+        min-width: 0;
+        white-space: nowrap;
+    }
+
+    /* 窄屏收窄缩进，保证随从行不顶出面板 */
+    .gm-remote-comp {
+        margin-left: 10px;
+        padding-left: 8px;
+    }
+}
+
+.gm-hpbar-ally {
+    height: 6px;
+}
+
+/* 派发 Buff 面板 */
+.gm-buff-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.gm-buff-row select {
+    flex: 1;
+    min-width: 0;
+}
+
+.gm-buff-row button {
+    white-space: nowrap;
+}
+
+.gm-buff-add {
+    width: 100%;
+}
+
+/* ===== 玩家行动（角色卡 ⇄ 主持人面板） ===== */
+.gm-act-flag {
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    color: var(--muted);
+    white-space: nowrap;
+}
+
+.gm-act-flag.done {
+    border-color: var(--green);
+    color: var(--green);
+}
+
+.gm-badge {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(255, 196, 0, 0.12);
+    border: 1px solid var(--gold);
+    color: var(--gold);
+    white-space: nowrap;
+}
+
+.gm-action-row {
+    align-items: center;
+}
+
+.gm-action-text {
+    flex: 1;
+    min-width: 120px;
+    font-size: 12px;
+    color: var(--txt);
+    word-break: break-word;
+}
+
+.pa-round {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--gold);
+    border: 1px solid var(--gold);
+    border-radius: 999px;
+    padding: 1px 10px;
+    margin-left: 8px;
+    vertical-align: middle;
+}
+
+.pa-state {
+    font-size: 12px;
+    margin: 4px 0 8px;
+    min-height: 20px;
+}
+
+.pa-done {
+    color: var(--green);
+    font-weight: 600;
+}
+
+.pa-pending {
+    color: var(--muted);
+}
+
+.pa-cols {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.pa-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+    margin-bottom: 4px;
+}
+
+.pa-row {
+    padding: 5px 8px;
+    gap: 6px;
+}
+
+.pa-self {
+    border-color: var(--gold);
+    box-shadow: inset 0 0 0 1px rgba(255, 196, 0, 0.25);
+}
+
+.pa-form {
+    border-top: 1px dashed var(--line);
+    padding-top: 8px;
+}
+
+.pa-form-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+}
+
+.pa-form-row .label {
+    margin: 0;
+    white-space: nowrap;
+}
+
+.pa-form-row select {
+    min-width: 120px;
+}
+
+@media (max-width: 620px) {
+    .pa-cols {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ===== 技能公式 / 发动 ===== */
+.skill-badge {
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    border: 1px solid var(--gold);
+    color: var(--gold);
+    margin-left: 6px;
+    white-space: nowrap;
+}
+
+.skill-badge.hit {
+    border-color: var(--orange);
+    color: var(--orange);
+}
+
+/* 资源消耗徽章 / 发动弹窗里的消耗提示 */
+.skill-badge.cost {
+    border-color: var(--blue);
+    color: var(--blue);
+}
+
+.su-cost {
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--blue);
+}
+
+.su-cost.short {
+    color: var(--orange);
+    font-weight: 700;
+}
+
+.skill-formula {
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 11px;
+    color: var(--blue);
+    margin-left: 6px;
+    white-space: nowrap;
+}
+
+.skill-use-info {
+    font-size: 12px;
+    line-height: 1.7;
+    color: var(--txt);
+}
+
+.skill-use-info .su-desc {
+    color: var(--muted);
+    margin-top: 4px;
+}
+
+.su-result {
+    margin-top: 10px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--p2);
+    font-size: 13px;
+    line-height: 1.7;
+    min-height: 52px;
+}
+
+.su-result b {
+    color: var(--gold);
+    font-size: 15px;
+}
+
+.su-ok {
+    color: var(--green);
+    font-weight: 600;
+}
+
+.su-bad {
+    color: var(--red);
+    font-weight: 600;
+}
+
+.su-dice {
+    font-size: 11px;
+    color: var(--muted);
+}
+
+/* ===== 主持人：伤害计算器 ===== */
+.gm-calc-row {
+    gap: 6px;
+}
+
+.gm-calc-row .gm-formula {
+    width: 118px;
+    font-family: ui-monospace, Consolas, monospace;
+    color: var(--blue);
+    text-align: center;
+}
+
+.gm-calc-row .gm-times {
+    width: 58px;
+    text-align: center;
+}
+
+.gm-calc-row .gm-calc-target {
+    flex: 1;
+    min-width: 130px;
+}
+
+.gm-calc-result {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--gold);
+    white-space: nowrap;
+}
+
+.gm-calc-result b {
+    font-size: 14px;
+}
+
+.gm-calc-hit {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 11px;
+    color: var(--muted);
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.gm-calc-hit input {
+    margin: 0;
+}
+
+.gm-calc-result {
+    white-space: normal;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: center;
+}
+
+.gm-calc-hitres {
+    font-size: 11px;
+}
+
+.gm-calc-hitres.ok {
+    color: var(--green);
+}
+
+.gm-calc-hitres.bad {
+    color: var(--red);
+}
+
+/* ===== 角色条组：HP / MP / 自定义机制（主持人看板与玩家行动页共用） ===== */
+.gm-unit {
+    align-items: flex-start;
+}
+
+.gm-bars {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.gm-bar-line {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+}
+
+.gm-bar-label {
+    font-size: 10px;
+    color: var(--muted);
+    min-width: 30px;
+    max-width: 110px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.gm-bar-line .gm-hpbar {
+    min-width: 70px;
+}
+
+.gm-bar-line .gm-hp {
+    min-width: 62px;
+    text-align: right;
+}
+
+/* ===== 参战开关（角色总览） ===== */
+.combat-toggle {
+    border-color: var(--green);
+    color: var(--green);
+}
+
+.combat-toggle.off {
+    border-color: var(--line);
+    color: var(--muted);
+}
+
+/* ===== 主持人：投骰审计 ===== */
+.gm-roll-flag {
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    color: var(--gold);
+    background: var(--p2);
+    white-space: nowrap;
+}
+
+.gm-roll-flag.warn {
+    border-color: var(--orange);
+    color: var(--orange);
+    font-weight: 700;
+}
+
+.gm-roll-row {
+    gap: 6px;
+}
+
+.gm-roll-row .gm-action-text {
+    flex: 1;
+    min-width: 80px;
+}
+
+/* 投掷记录：固定高度 + 内部滚动，避免记录多了把面板拉长 */
+.gm-roll-summary {
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 4px;
+}
+
+.gm-roll-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 210px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.gm-roll-list .gm-roll-row {
+    padding: 5px 8px;
+}
+
+.dice-roll-count {
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.dice-roll-count.warn {
+    color: var(--orange);
+    font-weight: 700;
+}
+
+/* ===== 主持人：长列表内部滚动（敌人 / 伤害计算器） ===== */
+.gm-scroll-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 240px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+@media (max-width: 620px) {
+    .gm-scroll-list {
+        max-height: 220px;
+    }
+}
+
+.gm-list-count {
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 4px;
+}
+
+/* ===== 主持人：背包 / 金币 ===== */
+/* 背包单独限高：物品多时只在列表内滚动，不要把整个面板拉长 */
+.gm-bag-list {
+    max-height: 200px;
+}
+
+.gm-bag-row {
+    gap: 6px;
+}
+
+.gm-bag-icon {
+    width: 20px;
+    text-align: center;
+}
+
+.gm-bag-row .gm-name {
+    min-width: 70px;
+}
+
+/* 背包 / 预设里的数量输入框：直接键入数量 */
+.gm-qty-input {
+    width: 62px;
+    margin-left: auto;
+    text-align: center;
+    padding: 3px 4px;
+}
+
+.gm-preset-item .gm-qty-input {
+    margin-left: 0;
+    width: 64px;
+}
+
+/* ===== 主持人：预设物品库 ===== */
+.gm-preset-count {
+    display: inline-block;
+    margin-left: 5px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: var(--gold);
+    color: #1b1f27;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.modal-wide {
+    max-width: 640px;
+}
+
+.gm-preset-modal-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 56vh;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.gm-preset-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--p2);
+    padding: 6px 10px;
+}
+
+.gm-preset-item:hover {
+    border-color: var(--gold);
+}
+
+.gm-preset-ico {
+    font-size: 18px;
+    width: 22px;
+    text-align: center;
+}
+
+.gm-preset-main {
+    flex: 1;
+    min-width: 0;
+}
+
+.gm-preset-name {
+    font-weight: 600;
+}
+
+.gm-preset-meta {
+    font-size: 11px;
+    color: var(--muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.gm-preset-item .gm-remove {
+    margin-left: 0;
+}
+
+.gm-preset-head .small {
+    color: var(--muted);
+}
+
+.gm-preset-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    max-height: 110px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.gm-preset-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--p2);
+    padding: 3px 8px;
+    font-size: 12px;
+    max-width: 100%;
+}
+
+.gm-preset-chip:hover {
+    border-color: var(--gold);
+}
+
+.gm-preset-chip b {
+    font-weight: 600;
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.gm-preset-chip .gm-sub {
+    font-size: 11px;
+}
+
+.gm-preset-chip button.small {
+    padding: 1px 8px;
+    font-size: 11px;
+}
+
+.gm-preset-chip .gm-remove {
+    font-size: 11px;
+    margin-left: 0;
+}
+
+/* ===== 自定义条联动：⚙ 设置按钮（配置放弹窗里，不占面板） ===== */
+.bar-cfg-btn {
+    display: inline-block;
+    margin-left: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    opacity: 0.75;
+    user-select: none;
+}
+
+.bar-cfg-btn:hover {
+    opacity: 1;
+    color: var(--gold);
+}
+
+/* 条上的小标记：🛡 护盾条 / 负 允许负值 */
+.bar-flag {
+    display: inline-block;
+    margin-left: 6px;
+    font-size: 12px;
+    cursor: help;
+    user-select: none;
+}
+
+.bar-flag.neg {
+    color: var(--orange);
+    font-weight: 700;
+}
+
+/* 魔力条隐藏按钮 + 主持人看板里的负数条 */
+.mp-hide-btn {
+    float: right;
+    font-size: 11px;
+    color: var(--muted);
+    cursor: pointer;
+    user-select: none;
+}
+
+.mp-hide-btn:hover {
+    color: var(--gold);
+}
+
+.gm-bar-line.gm-bar-neg .gm-hp {
+    color: var(--red);
+    font-weight: 700;
+}
+
+.gm-bar-line.gm-bar-neg .gm-hpbar {
+    box-shadow: inset 0 0 0 1px var(--red);
+}
+
+/* 物品卡片上的条联动标记 */
+.itembar {
+    color: var(--blue);
+    margin-left: 6px;
+}
+
+/* ===== 局域网房间 ===== */
+.room-bar {
+    background: var(--p2);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 6px 10px;
+    margin: 8px 0 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    cursor: pointer;
+    font-size: 12px;
+}
+.room-bar:hover {
+    border-color: var(--gold);
+}
+.room-code {
+    font-family: ui-monospace, Consolas, monospace;
+    letter-spacing: 2px;
+    color: var(--gold);
+    font-weight: bold;
+}
+.room-bar-notice {
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+    flex: 1;
+}
+.room-code-big {
+    font-family: ui-monospace, Consolas, monospace;
+    letter-spacing: 2px;
+    color: var(--gold);
+    font-size: 18px;
+    font-weight: bold;
+}
+.room-member {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 9px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--p2);
+    margin-bottom: 6px;
+}
+.room-member:hover {
+    border-color: var(--gold);
+}
+.room-dot {
+    font-size: 10px;
+    flex: none;
+}
+.room-name {
+    font-weight: 700;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+}
+.room-role {
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--line);
+    white-space: nowrap;
+    flex: none;
+}
+.room-char {
+    font-size: 11px;
+    color: var(--muted);
+    min-width: 0;
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: none;
+}
+.room-vitals {
+    font-size: 10px;
+    color: var(--muted);
+    white-space: nowrap;
+    flex: none;
+}
+.room-cls {
+    font-size: 10px;
+    color: var(--blue);
+    margin-left: 4px;
+}
+.room-member-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+.room-notice-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+.room-notice {
+    font-size: 11px;
+    color: var(--muted);
+    padding: 4px 0;
+    border-bottom: 1px solid #2c3240;
+}
+.room-notice:last-child {
+    border-bottom: none;
+}
+.room-notice-from {
+    color: var(--gold);
+    font-weight: 700;
+}
+.room-notice-at {
+    color: var(--muted);
+    font-size: 10px;
+    margin-left: 6px;
+}
+.room-empty {
+    color: var(--muted);
+    font-size: 11px;
+    padding: 10px 0;
+    text-align: center;
+}
+
+/* ==== 房间横幅：镜像编辑中 / 待应用角色卡 ==== */
+.room-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 8px 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--p2);
+    margin-bottom: 8px;
+    font-size: 13px;
+}
+.room-banner.hide { display: none !important; }
+.room-banner-mirror { border-left: 3px solid var(--gold); }
+.room-banner-pending { border-left: 3px solid var(--blue); }
+
+/* 待应用提示条是页面级容器（body 直下）：任何视图下都要看得到、点得到。
+   position: sticky 让玩家滚到页面中段也不会错过；宽度对齐 .app 的视觉边距。 */
+#pendingBar.pending-bar-global {
+    position: sticky;
+    top: 0;
+    z-index: 60;
+    box-sizing: border-box;
+    width: calc(100% - 16px);
+    max-width: 900px;
+    margin: 8px auto;
+    border-color: var(--blue);
+    background: #2b3546;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, .45);
+}
+#pendingBar.pending-bar-global #pendingBarText { font-weight: 600; }
+
+/* 窄屏：弹窗内成员列表内部滚动，避免溢出 */
+@media (max-width: 620px) {
+    .room-member-list {
+        max-height: 240px;
+        overflow-y: auto;
+        padding-right: 4px;
+    }
+}
+
+/* ===== 角色管理 ===== */
+.cm-toolbar {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+}
+.cm-head {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+.cm-title {
+    font-weight: 700;
+    color: var(--gold);
+    font-size: 15px;
+}
+.cm-stats {
+    font-size: 12px;
+    color: var(--muted);
+    white-space: nowrap;
+    transition: color 0.25s ease;
+}
+.cm-stats.flash {
+    color: var(--green);
+}
+.cm-toolbar-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+.cm-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px;
+}
+.cm-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 7px 10px;
+    background: var(--p2);
+    cursor: default;
+}
+.cm-row:hover {
+    border-color: var(--gold);
+}
+.cm-icon {
+    width: 30px;
+    text-align: center;
+    font-size: 17px;
+    flex: none;
+}
+.cm-info {
+    flex: 1;
+    min-width: 0;
+}
+.cm-name {
+    font-weight: 700;
+    font-size: 14px;
+    overflow-wrap: anywhere;
+}
+.cm-sub {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 2px;
+    overflow-wrap: anywhere;
+}
+.cm-vitals {
+    font-size: 12px;
+    color: var(--txt);
+    white-space: nowrap;
+    flex: none;
+    min-width: 150px;
+    text-align: right;
+}
+.cm-badge {
+    font-size: 10px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    border: 1px solid;
+    color: var(--txt);
+    white-space: nowrap;
+    flex: none;
+}
+.cm-badge.full {
+    border-color: var(--green);
+    color: var(--green);
+    background: rgba(101, 189, 136, 0.12);
+}
+.cm-badge.plain {
+    border-color: var(--line);
+    color: var(--muted);
+    background: transparent;
+}
+.cm-sub .cm-badge {
+    margin-left: 6px;
+    vertical-align: 1px;
+}
+.cm-none {
+    color: var(--muted);
+    font-style: italic;
+}
+.cm-actions {
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
+    margin-left: auto;
+    flex: none;
+}
+.cm-actions button.small {
+    font-size: 10px;
+    padding: 4px 8px;
+    white-space: nowrap;
+}
+.cm-icon.on {
+    color: var(--green);
+}
+.cm-lv {
+    color: var(--gold);
+}
+
+/* 查看角色卡弹窗（只读） */
+.modal-cm-view {
+    max-width: 560px;
+}
+.cm-view-top {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 10px;
+}
+.cm-view-icon {
+    width: 40px;
+    height: 40px;
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: var(--p2);
+}
+.cm-view-head {
+    min-width: 0;
+}
+.cm-view-name {
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--txt);
+    overflow-wrap: anywhere;
+}
+.cm-view-list {
+    display: flex;
+    flex-direction: column;
+}
+.cm-view-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 5px 2px;
+    border-bottom: 1px dashed rgba(72, 82, 100, 0.55);
+    font-size: 13px;
+}
+.cm-view-row:last-child {
+    border-bottom: none;
+}
+.cm-view-k {
+    color: var(--muted);
+    flex: none;
+}
+.cm-view-v {
+    text-align: right;
+    color: var(--txt);
+    overflow-wrap: anywhere;
+}
+.cm-view-section {
+    margin: 12px 0 4px;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: var(--gold);
+    text-transform: none;
+}
+.cm-view-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 2px;
+    font-size: 12px;
+}
+.cm-view-bar-name {
+    flex: 0 0 84px;
+    color: var(--muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.cm-view-bar-track {
+    flex: 1;
+    min-width: 40px;
+    height: 7px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.28);
+    border: 1px solid var(--line);
+    overflow: hidden;
+}
+.cm-view-bar-track > span {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+}
+.cm-view-bar-val {
+    flex: none;
+    min-width: 58px;
+    text-align: right;
+    color: var(--txt);
+    font-variant-numeric: tabular-nums;
+}
+@media (max-width: 640px) {
+    .cm-row {
+        align-items: flex-start;
+    }
+    .cm-vitals {
+        min-width: auto;
+        width: 100%;
+        text-align: left;
+        margin-top: 2px;
+    }
+    .cm-actions {
+        margin-left: 0;
+        width: 100%;
+        justify-content: flex-start;
+        margin-top: 6px;
+    }
+    .cm-actions button.small {
+        flex: 1 1 auto;
+        text-align: center;
+    }
+}
+
+/* 使用消耗品选目标（战斗中） */
+#modalItemUse .modal-box {
+    max-width: 420px;
+}
+
+#itemUseInfo {
+    margin-bottom: 8px;
+    color: var(--muted, #888);
+}

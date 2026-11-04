@@ -1,0 +1,1138 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>JigeRPG v0.42 跑团角色板</title>
+    <link rel="stylesheet" href="css/main.css">
+</head>
+
+<body>
+    <div class="room-banner room-banner-pending pending-bar-global hide" id="pendingBar">
+        <span id="pendingBarText">📝 主持人修改了你的角色卡（角色：X）</span>
+        <button class="small orange" onclick="roomUiApplyPending()">应用修改</button>
+        <button class="small" onclick="roomUiClearPending()">忽略</button>
+    </div>
+    <main class="app">
+        <header>
+            <div>
+                <div class="brand" title="JigeRPG">⚔ JigeRPG</div>
+                <div class="small">跑团角色板 · v0.42</div>
+            </div>
+            <div class="row">
+                <div class="char-picker" id="charPicker">
+                    <button type="button" class="char-picker-btn" id="charPickerBtn" onclick="event.stopPropagation();toggleCharPicker()">选择角色 ▾</button>
+                    <div class="char-picker-menu hide" id="charPickerMenu"></div>
+                    <select id="charSelect" hidden></select>
+                </div>
+                <button onclick="newCharacter()">新建角色</button>
+                <button onclick="createCompanion()">🐾 新建随从</button>
+                <button onclick="deleteCharacter()">删除当前角色</button>
+                <button class="danger" onclick="openResetModal()">重置当前角色</button>
+                <button onclick="save()">保存</button>
+                <button onclick="exportSave()">导出存档</button>
+                <button onclick="document.getElementById('file').click()">导入存档</button>
+                <input id="file" type="file" accept=".json" hidden onchange="importSave(event)">
+                <button id="roomBtn" class="small" onclick="openRoomModal()">🚪 房间</button>
+            </div>
+        </header>
+
+        <div id="roomBar" class="room-bar hide" onclick="openRoomModal()" role="button" tabindex="0">
+            <span class="room-bar-main">🛏 房间 <span id="roomBarCode" class="room-code">ABC123</span> · 在线 <span id="roomBarCount">0</span></span>
+            <span id="roomBarNotice" class="room-bar-notice hide">📢 最新公告：<span id="roomBarNoticeText"></span></span>
+        </div>
+
+        <div class="view-switch">
+            <button class="view-tab active" id="viewTabCharacter" onclick="switchView('character')">🧙 角色卡</button>
+            <button class="view-tab" id="viewTabGm" onclick="switchView('gm')">🎭 主持人面板</button>
+            <button class="view-tab" id="viewTabManage" style="display:none" onclick="switchView('manage')">📋 角色管理</button>
+            <button class="view-tab" id="viewTabLink" onclick="switchView('link')">🌐 联机管理</button>
+        </div>
+
+        <nav class="tabs">
+            <button class="tab active" onclick="page('character',this)">角色总览</button>
+            <button class="tab" onclick="page('bag',this)">物品背包</button>
+            <button class="tab" onclick="page('skills',this)">技能记录</button>
+            <button class="tab" onclick="page('buff',this)">状态/Buff</button>
+            <button class="tab" onclick="page('dice',this)">🎲骰子</button>
+            <button class="tab" onclick="page('combat',this)">⚔战斗计算器</button>
+            <button class="tab" onclick="page('story',this)">📖背景&笔记</button>
+            <button class="tab" onclick="page('action',this);renderPlayerActionPanel()">⚔本回合行动</button>
+        </nav>
+
+        <section id="character" class="page active">
+            <div class="room-banner room-banner-mirror hide" id="mirrorBar">
+                <span id="mirrorBarText">🎭 正在编辑玩家「X」的角色卡 · 保存后会自动同步给玩家</span>
+                <button onclick="switchView('gm')">返回主持人</button>
+                <button class="small" onclick="switchView('gm')">完成编辑</button>
+            </div>
+            <div class="dashboard">
+                <!-- 左边：角色资料 -->
+                <div class="panel profilepanel">
+                    <h2>角色资料</h2>
+                    <div class="profile">
+                        <div class="avatar-wrap">
+                            <div class="avatar" id="avatarBox" title="点击上传本地图片，也可把图片拖进来"
+                                onclick="pickAvatar()"
+                                ondragover="event.preventDefault();this.classList.add('drag')"
+                                ondragleave="this.classList.remove('drag')" ondrop="dropAvatar(event)">
+                                <img id="avatarImg" alt="角色头像">
+                                <span id="avatarFallback">⚔</span>
+                                <span class="avatar-hint">更换</span>
+                            </div>
+                            <button class="avatar-reset" id="avatarReset" onclick="resetAvatar()"
+                                style="display:none">恢复默认</button>
+                        </div>
+                        <input type="file" id="avatarFile" accept="image/*" style="display:none">
+                        <div class="identity">
+                            <input id="name" value="无名冒险者" placeholder="角色名称">
+                            <div class="job-row">
+                                <input id="job" placeholder="职业">
+                                <button class="small" onclick="openExtraModal()" title="职业/血脉/灵根等不随等级成长的数值与小被动">✚ 其他修正</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row" style="margin-top:8px;align-items:center;gap:8px">
+                        <button class="small combat-toggle" id="combatToggle" onclick="toggleCombat()">⚔ 参战中</button>
+                        <span class="small" style="color:var(--muted)">不参战时，主持人队伍看板不显示这个角色，回合结算也会跳过。</span>
+                    </div>
+                    <div class="twocol">
+                        <div><label class="label">等级</label><input id="level" type="number" value="1" min="1"></div>
+                        <div><label class="label">经验值</label><input id="xp" type="number" value="0" min="0"></div>
+                    </div>
+                    <div class="twocol" style="margin-top:6px">
+                        <button class="orange" onclick="openRaceModal()">🧬 种族加成</button>
+                        <button class="orange" onclick="openLevelModal()">📈 等级成长</button>
+                    </div>
+                    <div id="growthInfo" class="small" style="margin-top:4px;color:var(--muted)"></div>
+
+                    <!-- 生命值 -->
+                    <div class="hptext" style="margin-top:10px">
+                        <b>生命值</b><strong id="hptext">20 / 20</strong>
+                        <span class="hp-color-wrap">🎨 <input type="color" id="hpColorPick" class="hp-color-pick" value="#4caf50"
+                                title="血条颜色（血魔共池、烧血种族可以染成紫色）" onchange="setHpColor(this.value)"><span
+                                class="hp-color-reset" onclick="setHpColor('')" title="恢复默认颜色">↺</span></span>
+                    </div>
+                    <div class="hpbar">
+                        <div class="hpfill" id="hpfill"></div>
+                    </div>
+                    <div class="twocol">
+                        <div><label class="label">当前 HP</label><input id="hp" type="number" value="20" min="0"></div>
+                        <div><label class="label">最大 HP(基础)</label><input id="maxHpBase" type="number" value="20"
+                                min="1"></div>
+                    </div>
+
+                    <!-- 魔力值（不使用 MP 的角色可隐藏） -->
+                    <div id="mpBlock" style="margin-top:8px">
+                        <div class="mptext">
+                            <b>魔力值</b><strong id="mptext">10 / 10</strong>
+                            <span class="mp-hide-btn" onclick="toggleMpHidden()" title="隐藏魔力条（放弃 MP 的角色）">👁 隐藏</span>
+                        </div>
+                        <div class="mpbar">
+                            <div class="mpfill" id="mpfill"></div>
+                        </div>
+                        <div class="twocol">
+                            <div><label class="label">当前 MP</label><input id="mp" type="number" value="10" min="0"></div>
+                            <div><label class="label">最大 MP(基础)</label><input id="maxMpBase" type="number" value="10"
+                                    min="1"></div>
+                        </div>
+                    </div>
+                    <div id="mpHiddenHint" class="small" style="display:none;color:var(--muted);margin-top:6px">
+                        💧 魔力条已隐藏（这个角色不使用 MP）
+                        <button class="small" onclick="toggleMpHidden()">显示</button>
+                    </div>
+
+                    <div class="twocol" style="margin-top:7px">
+                        <div><label class="label">HP 变动值</label><input id="hpDelta" type="number" value="5" min="0">
+                        </div>
+                        <div id="mpDeltaWrap"><label class="label">MP 变动值</label><input id="mpDelta" type="number" value="3" min="0">
+                        </div>
+                    </div>
+                    <div class="twocol" style="margin-top:7px">
+                        <button onclick="applyHpDelta(-1)">－ 受到伤害</button>
+                        <button onclick="applyHpDelta(1)">＋ 恢复生命</button>
+                    </div>
+                    <div class="twocol" style="margin-top:4px">
+                        <button onclick="applyMpDelta(-1)">－ 消耗魔力</button>
+                        <button onclick="applyMpDelta(1)">＋ 恢复魔力</button>
+                    </div>
+
+                    <!-- 自定义机制区 -->
+                    <div style="margin-top: 15px; border-top: 1px solid var(--line); padding-top: 12px;">
+                        <div class="bar" style="margin-bottom: 10px;">
+                            <b style="cursor: pointer; font-size: 14px;" onclick="toggleCustomPanel()">⚙️ 自定义机制
+                                (点击展开)</b>
+                            <button onclick="addCustomStat()" style="font-size: 12px; padding: 4px 8px;">＋ 添加</button>
+                        </div>
+                        <div id="customStatWrapper">
+                            <div id="customStatPanel" style="display: flex; flex-direction: column; gap: 10px;"></div>
+                        </div>
+                    </div>
+
+                    <!-- 宠物/随从区 -->
+                    <div style="margin-top: 15px; border-top: 1px solid var(--line); padding-top: 12px;">
+                        <div class="bar" style="margin-bottom: 10px;">
+                            <b style="cursor: pointer; font-size: 14px;" onclick="toggleCompanionPanel()">🐾 宠物/随从
+                                (点击展开)</b>
+                            <button onclick="addCompanion()" style="font-size: 12px; padding: 4px 8px;">＋ 添加</button>
+                        </div>
+                        <div id="companionWrapper">
+                            <div id="companionPanel" style="display: flex; flex-direction: column; gap: 10px;"></div>
+                        </div>
+                    </div>
+
+                    <!-- 快捷消耗栏 -->
+                    <div style="margin-top: 20px;">
+                        <label class="label">🧴快捷消耗栏（点击分配/使用）</label>
+                        <div class="quick-consume" id="quickConsumeBar"></div>
+                        <div class="small">点击空槽分配消耗品；点击已有物品直接使用</div>
+                    </div>
+                </div>
+
+                <!-- 中间：基础属性 -->
+                <div class="panel">
+                    <h2>基础属性（原生｜装备加成｜合计）</h2>
+                    <div class="stats" id="statPanel"></div>
+                    <p class="small">金色大数字=当前合计（含装备/种族/等级加成）；下方小输入框为原生属性，修改后自动重算。</p>
+                    <div class="stats" style="margin-top: 10px;">
+                        <div class="stat">
+                            <input id="gold" type="number" value="0" min="0">
+                            <span>金币</span>
+                            <div class="stat-bonus" style="color:var(--muted)">总计</div>
+                        </div>
+                        <div class="stat">
+                            <input id="armorBase" type="number" value="0" min="0">
+                            <span>护甲(基础)</span>
+                            <div class="stat-bonus" id="armorBaseText">0 +0=0</div>
+                        </div>
+                        <div class="stat">
+                            <input id="speed" type="number" value="30" min="0">
+                            <span>基础移动速度</span>
+                            <div class="stat-bonus" id="speedTotalText">总计 30</div>
+                        </div>
+                    </div>
+                    <div class="stats" style="margin-top: 10px;">
+                        <div class="stat">
+                            <div class="derived" id="damageTotal">0</div>
+                            <span>伤害加值</span>
+                            <div class="stat-bonus" style="color:var(--muted)">力量+装备</div>
+                        </div>
+                        <div class="stat">
+                            <div class="derived" id="initiativeTotal">0</div>
+                            <span>先攻</span>
+                            <div class="stat-bonus" style="color:var(--muted)">敏捷+感知</div>
+                        </div>
+                        <div class="stat">
+                            <div class="derived" id="conModText">0</div>
+                            <span>体质→生命</span>
+                            <div class="stat-bonus" style="color:var(--muted)">影响最大HP</div>
+                        </div>
+                    </div>
+                    <div class="fourcol" style="margin-top: 10px;">
+                        <div class="stat">
+                            <div class="derived" id="resistPhysical">0%</div><span>物理抗性</span>
+                        </div>
+                        <div class="stat">
+                            <div class="derived" id="resistFire">0%</div><span>火焰抗性</span>
+                        </div>
+                        <div class="stat">
+                            <div class="derived" id="resistIce">0%</div><span>冰霜抗性</span>
+                        </div>
+                        <div class="stat">
+                            <div class="derived" id="resistPoison">0%</div><span>毒素抗性</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 右边：装备栏 -->
+                <div class="panel">
+                    <div class="bar">
+                        <h2>装备栏</h2><span class="small">下拉仅显示对应分类装备</span>
+                    </div>
+                    <div id="gear" class="gear"></div>
+                    <div style="margin-top:7px; display:flex; gap:6px; flex-wrap:wrap">
+                        <button onclick="addGearSlot()">＋ 自定义装备栏</button>
+                        <button class="small" onclick="restoreBuiltinSlots()" title="把已隐藏的内置装备栏全部恢复">↺ 恢复内置装备栏</button>
+                    </div>
+                    <div id="setInfo" class="small" style="margin-top:6px"></div>
+                    <p class="small">--卸下--取消穿戴；点内置栏右上角 ✖ 可隐藏不需要的栏（如马不需要盾牌）；自定义装备栏可自选可穿戴分类。</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="bag" class="page">
+            <div class="panel">
+                <div class="bar">
+                    <div>
+                        <h2>物品背包</h2><span class="small">物品分类、装备加成、消耗品效果</span>
+                    </div>
+                    <button onclick="openAddItemModal()">＋添加物品</button>
+                </div>
+                <div id="carryBar" class="carry-bar"></div>
+                <div class="carry-settings">
+                    <label>基础负重<input id="carryBaseInput" type="number" min="0" step="1" value="10" onchange="setCarryBase(this.value)"> kg</label>
+                    <label>力量加成上限<input id="carryStrCapInput" type="number" min="0" step="1" value="60" onchange="setCarryStrCap(this.value)"> kg</label>
+                    <span class="small">力量每点 +3kg，超过上限按上限算；储物道具可额外提升</span>
+                </div>
+                <div id="items" class="items"></div>
+            </div>
+        </section>
+
+        <section id="skills" class="page">
+            <div class="panel">
+                <div class="bar">
+                    <div>
+                        <h2>技能记录</h2><span class="small">可填骰子公式（如 2d6+3），发动时自动掷骰、套加成，直接发给主持人结算</span>
+                    </div>
+                    <button onclick="openAddSkillModal()">＋添加技能</button>
+                </div>
+                <div id="skillsList"></div>
+            </div>
+        </section>
+
+        <section id="buff" class="page">
+            <div class="panel">
+                <div class="bar">
+                    <div>
+                        <h2>状态 / Buff / DeBuff</h2><span class="small">记录持续回合与效果</span>
+                    </div>
+                    <div>
+                        <button class="orange" onclick="tickBuffs()">回合结束</button>
+                        <button onclick="openAddBuffModal()">＋新增状态</button>
+                    </div>
+                </div>
+                <div style="margin:12px 0 2px; display:flex; align-items:center; justify-content:space-between; gap:8px;">
+                    <span class="label" style="margin:0">⚡ 快速施加</span>
+                    <span class="small">点一下直接施加，模板不会被消耗</span>
+                </div>
+                <div id="quickBuffBar" class="quick-buff-bar"></div>
+                <div id="buffToast" class="buff-toast"></div>
+                <div id="buffList"></div>
+            </div>
+        </section>
+
+        <section id="dice" class="page">
+            <div class="panel">
+                <h2>🎲骰子投掷 d4/d6/d8/d10/d12/d20</h2>
+                <div class="dice-panel">
+                    <div class="threecol">
+                        <div><label class="label">骰子面数</label>
+                            <select id="diceSides">
+                                <option value="4">d4</option>
+                                <option value="6">d6</option>
+                                <option value="8">d8</option>
+                                <option value="10">d10</option>
+                                <option value="12">d12</option>
+                                <option value="20" selected>d20</option>
+                            </select>
+                        </div>
+                        <div><label class="label">骰子数量</label><input id="diceCount" type="number" value="1" min="1">
+                        </div>
+                        <div><label class="label">修正值(+-)</label><input id="diceMod" type="number" value="0"></div>
+                    </div>
+                    <div class="twocol" style="margin-top:8px">
+                        <button onclick="rollDice()">投掷骰子</button>
+                        <button onclick="rollAdv()">优势(取大)</button>
+                        <button onclick="rollDis()">劣势(取小)</button>
+                        <button onclick="clearDiceLog()">清空日志</button>
+                    </div>
+                    <div class="threecol" style="margin-top:10px">
+                        <div><label class="label">属性检定</label>
+                            <select id="checkStat">
+                                <option value="strength">力量</option>
+                                <option value="dexterity">敏捷</option>
+                                <option value="constitution">体质</option>
+                                <option value="intelligence">智力</option>
+                                <option value="wisdom">感知</option>
+                                <option value="charisma">魅力</option>
+                            </select>
+                        </div>
+                        <div><label class="label">DC</label><input id="checkDC" type="number" value="10"></div>
+                        <div><label class="label">熟练加值</label><input id="checkProf" type="number" value="2"></div>
+                    </div>
+                    <div class="twocol" style="margin-top:6px">
+                        <button onclick="rollCheck()">属性检定 d20+调整</button>
+                    </div>
+                    <div id="diceRollCount" class="dice-roll-count">🎲 本回合还没有投骰子（主持人可见）</div>
+                    <div class="dice-log" id="diceLog"></div>
+                </div>
+            </div>
+        </section>
+
+        <section id="combat" class="page">
+            <div class="panel">
+                <h2>⚔简易战斗计算器</h2>
+                <div class="combat-calc">
+                    <div class="threecol">
+                        <div><label class="label">攻击骰(d20+修正)</label><input id="combatAtkMod" type="number" value="0">
+                        </div>
+                        <div><label class="label">伤害骰表达式</label><input id="combatDmgExpr" placeholder="例:1d8+3"
+                                value="1d8+3"></div>
+                        <div><label class="label">敌人AC</label><input id="enemyAC" type="number" value="10"></div>
+                    </div>
+                    <div class="twocol" style="margin-top:8px">
+                        <div><label class="label">敌人当前HP</label><input id="enemyHp" type="number" value="30" min="0">
+                        </div>
+                        <div><label class="label">敌人最大HP</label><input id="enemyMaxHp" type="number" value="30" min="1">
+                        </div>
+                    </div>
+                    <div style="margin-top:8px">
+                        <label class="label">攻击目标（参战的宠物/随从可选为主要受击对象）</label>
+                        <select id="combatTarget">
+                            <option value="hero">主角</option>
+                        </select>
+                    </div>
+                    <div class="twocol" style="margin-top:8px">
+                        <div><label class="label">敌人类型（触发条件加成）</label><input id="enemyType" placeholder="例: 亡灵"></div>
+                        <div><label class="label">伤害类型（用于抗性）</label>
+                            <select id="incomingType">
+                                <option value="physical">物理</option>
+                                <option value="fire">火焰</option>
+                                <option value="ice">冰霜</option>
+                                <option value="poison">毒素</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="twocol" style="margin-top:8px">
+                        <div><label class="label">角色受到伤害</label><input id="incomingDmg" type="number" value="10" min="0"></div>
+                        <button onclick="playerTakeDamage()" style="align-self:end">结算受伤（按抗性减免）</button>
+                    </div>
+                    <div class="fourcol" style="margin-top:8px">
+                        <button onclick="combatAttack()">发起攻击</button>
+                        <button onclick="enemyDamage()">敌人受伤</button>
+                        <button onclick="enemyHeal()">敌人治疗</button>
+                        <button onclick="resetEnemy()">重置敌人</button>
+                    </div>
+                    <div style="margin-top:12px; display:flex; align-items:center; gap:8px; flex-wrap:wrap">
+                        <span class="label" style="margin:0">⚡ 快速施加</span>
+                        <button class="orange" onclick="tickBuffs()" style="margin-left:auto">⏭ 回合结束</button>
+                    </div>
+                    <div id="combatQuickBuffBar" class="quick-buff-bar"></div>
+                    <div id="combatBuffToast" class="buff-toast"></div>
+                    <div class="dice-log" id="combatLog"></div>
+                </div>
+            </div>
+        </section>
+
+        <section id="story" class="page">
+            <div class="panel">
+                <h2>📖角色背景故事 & 私人笔记</h2>
+                <textarea id="storyNote" style="min-height:420px" placeholder="在这里写角色背景、秘密、线索、备忘录……"></textarea>
+            </div>
+            <!-- 随从身份设置：仅当激活角色是随从时，由 renderCompanions() 填充；放在背景&笔记之后（随从属于附庸类，不占角色主位） -->
+            <div id="companionSelfBar" class="companion-selfbar-slot" style="display:none"></div>
+        </section>
+
+        <!-- 角色卡 ⇄ 主持人面板联动：玩家每回合提交一次行动，主持人回合结束时结算 -->
+        <section id="action" class="page">
+            <div class="panel" id="playerActionPanel">
+                <h2>⚔ 本回合行动 <span id="paRound" class="pa-round">第 1 回合</span></h2>
+                <div class="small" style="color:var(--muted);margin-bottom:6px">
+                    主持人点「回合结束」之前，你可以提交一次战斗／行为行动。同一回合只能提交一次，回合结束后可再次行动。
+                </div>
+                <div id="paState" class="pa-state"></div>
+
+                <div class="pa-cols">
+                    <div>
+                        <div class="pa-title">👥 队伍状态</div>
+                        <div id="paParty" class="gm-list"></div>
+                    </div>
+                    <div>
+                        <div class="pa-title">👹 当前遭遇</div>
+                        <div id="paEnemies" class="gm-list"></div>
+                    </div>
+                </div>
+
+                <div class="pa-quick">
+                    <div class="label">⚡ 快速技能</div>
+                    <div class="quick-chips" id="paQuickSkills"></div>
+                </div>
+                <div class="pa-quick">
+                    <div class="label">🧪 快速消耗品</div>
+                    <div class="quick-chips" id="paQuickConsume"></div>
+                </div>
+
+                <div id="paForm" class="pa-form">
+                    <div class="pa-form-row">
+                        <label class="label" for="paType">行动类型</label>
+                        <select id="paType">
+                            <option value="attack">⚔ 攻击</option>
+                            <option value="skill">✨ 技能/施法</option>
+                            <option value="defend">🛡 防御</option>
+                            <option value="move">🏃 移动</option>
+                            <option value="other">🌀 其他</option>
+                        </select>
+                        <label class="label" for="paTarget">目标</label>
+                        <select id="paTarget"></select>
+                    </div>
+                    <div class="pa-form-row">
+                        <input id="paText" style="flex:1;min-width:160px" placeholder="具体行动，例如：绕到地精弓手背后攻击 / 施放火球术">
+                        <button onclick="gmSubmitAction()">提交行动</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 主持人面板：独立于所有角色卡，数据单独存档（jigerpg_gm_v1） -->
+        <section id="gmView" class="gm-view">
+            <div id="gmReadOnlyBar" class="gm-readonly-bar" style="display:none">
+                👁 只读模式 · 这是房主的面板，你可以查看但不能修改
+            </div>
+            <div class="gm-grid">
+                <div class="panel">
+                    <h2>🛡 队伍看板</h2>
+                    <div class="small" style="color:var(--muted);margin-bottom:6px">主人角色一览；受伤/治疗会直接写进对应角色存档。</div>
+                    <div id="gmParty" class="gm-list"></div>
+                </div>
+
+                <div class="panel">
+                    <h2>⏳ 行动队列</h2>
+                    <div class="small" style="color:var(--muted);margin-bottom:6px">玩家在角色卡「背景&笔记」页提交的行动。点「回合结束」会把它们记进日志并清空。</div>
+                    <div class="row" style="margin-bottom:8px">
+                        <button class="small" onclick="gmClearActions()">清空行动</button>
+                    </div>
+                    <div id="gmActions" class="gm-list"></div>
+                </div>
+
+                <div class="panel">
+                    <h2>🎲 本回合投掷记录</h2>
+                    <div class="small" style="color:var(--muted);margin-bottom:6px">玩家在骰子页 / 战斗计算器 / 技能弹窗投的每一次骰子都会记在这里（含重掷）。队伍看板上的「🎲 N」是本回合投掷次数。</div>
+                    <div class="row" style="margin-bottom:8px">
+                        <button class="small" onclick="gmClearRolls()">清空记录</button>
+                    </div>
+                    <div id="gmRolls" class="gm-list"></div>
+                </div>
+
+                <div class="panel">
+                    <h2>👹 遭遇管理</h2>
+                    <div class="row" style="margin-bottom:8px">
+                        <button class="small" onclick="addEnemy()">＋ 添加敌人</button>
+                        <button class="small" onclick="clearEnemies()">清空</button>
+                    </div>
+                    <div id="gmEnemies" class="gm-list"></div>
+                </div>
+
+                <div class="panel">
+                    <h2>💥 伤害计算器</h2>
+                    <div class="small" style="color:var(--muted);margin-bottom:6px">一条 = 一种攻击（怪多就多加几条）；×N 模拟一群同种怪。掷完可直接扣到队伍里的角色或随从，公式会存档，不用反复填。</div>
+                    <div class="row" style="margin-bottom:8px">
+                        <button class="small" onclick="gmAddCalc()">＋ 添加一条</button>
+                        <button class="small" onclick="gmClearCalcs()">清空</button>
+                    </div>
+                    <div id="gmCalcs" class="gm-list"></div>
+                </div>
+
+                <div class="panel">
+                    <h2>🎁 派发 / 快速 Buff</h2>
+                    <div class="small" style="color:var(--muted);margin-bottom:6px">直接写进目标的 Buff 列表；模板来自主持人公共库 + 所有角色的快速施加库，可以派给任意目标（用过的模板会自动收进公共库）。自定义则复用角色卡的「新增状态」弹窗。</div>
+                    <div class="gm-buff-row">
+                        <select id="gmBuffTarget" onchange="gmRenderBuffLib()"></select>
+                    </div>
+                    <div class="gm-buff-row">
+                        <select id="gmBuffLib" style="flex:1"></select>
+                        <button class="small" onclick="gmApplyBuffTemplate()">派发模板</button>
+                    </div>
+                    <div class="gm-buff-row">
+                        <button class="small" onclick="gmOpenAddBuff()">＋ 新增状态（完整编辑）</button>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <h2>🎒 背包 / 金币</h2>
+                    <div class="small" style="color:var(--muted);margin-bottom:6px">选中角色后可查看其背包；发放物品复用角色卡的「添加物品」弹窗，金币单独加减。</div>
+                    <div class="gm-buff-row">
+                        <select id="gmItemTarget" onchange="gmRenderBag()"></select>
+                    </div>
+                    <div class="row" style="margin:8px 0;align-items:center;gap:6px;flex-wrap:wrap">
+                        <span class="small">💰 金币</span>
+                        <span id="gmGold" class="gm-hp">0</span>
+                        <button class="small" onclick="gmAdjustGold('add')">＋ 加钱</button>
+                        <button class="small" onclick="gmAdjustGold('sub')">－ 扣钱</button>
+                        <button class="small" onclick="gmAdjustGold('set')">设为</button>
+                    </div>
+                    <div class="row" style="margin-bottom:8px">
+                        <button class="small" onclick="gmOpenItemModal()">＋ 添加物品（复用角色卡）</button>
+                    </div>
+                    <div id="gmBag" class="gm-list"></div>
+                    <div class="row" style="margin-top:8px">
+                        <button class="small" onclick="gmOpenPresetModal()">📦 预设物品库<span id="gmPresetCount" class="gm-preset-count">0</span></button>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <h2>🎲 主持人骰子</h2>
+                    <div class="row" style="margin-bottom:8px;flex-wrap:wrap;gap:4px">
+                        <button class="small" onclick="gmRoll(4)">d4</button>
+                        <button class="small" onclick="gmRoll(6)">d6</button>
+                        <button class="small" onclick="gmRoll(8)">d8</button>
+                        <button class="small" onclick="gmRoll(10)">d10</button>
+                        <button class="small" onclick="gmRoll(12)">d12</button>
+                        <button class="small" onclick="gmRoll(20)">d20</button>
+                        <button class="small" onclick="gmRoll(100)">d100</button>
+                        <button class="small" onclick="clearGmLog()">清空记录</button>
+                    </div>
+                    <div id="gmLog" class="dice-log gm-log"></div>
+                </div>
+
+                <div class="panel">
+                    <h2>📖 场景 / 回合</h2>
+                    <div class="row" style="margin-bottom:8px;align-items:center;gap:6px">
+                        <span class="small">回合</span>
+                        <input id="gmRound" type="number" min="1" style="width:80px" onchange="gmSetRound(this.value)">
+                        <button class="small" onclick="gmNextRound()" title="结算所有人（主角+参战随从）的 Buff 回合、每回合回复与被动">⏭ 回合结束（统一结算）</button>
+                        <button class="small" onclick="gmResetRound()">重置</button>
+                    </div>
+                    <textarea id="gmNote" style="min-height:260px" placeholder="场景描述、线索、主持人笔记、剧情备忘……" onchange="gmSetNote(this.value)"></textarea>
+                </div>
+            </div>
+        </section>
+
+        <!-- 角色管理：房间内玩家成员列表（房主专用，查看/编辑玩家角色卡） -->
+        <section id="charManageView" class="manage-view">
+            <div class="panel">
+                <div class="cm-toolbar">
+                    <div class="cm-head">
+                        <div class="cm-title">📋 角色管理</div>
+                        <div class="cm-sub" id="cmRoomLine">还没有创建房间</div>
+                    </div>
+                    <div class="cm-toolbar-actions">
+                        <div class="cm-stats" id="cmStats">玩家 0 名 · 在线 0 名</div>
+                        <button class="small" onclick="cmRefresh()" title="重新读取房间成员">🔄 刷新</button>
+                    </div>
+                </div>
+                <div id="cmListWrap" class="cm-list-wrap" style="max-height:60vh;overflow-y:auto;border:1px solid var(--line);border-radius:10px;background:var(--p);">
+                    <div id="cmList" class="cm-list"></div>
+                </div>
+                <div id="cmEmpty" class="empty" style="display:none">还没有玩家加入</div>
+            </div>
+        </section>
+
+        <!-- 联机管理：任何身份都能进；未入房时可创建或加入房间 -->
+        <section id="linkView" class="link-view">
+            <div class="panel" id="linkRoomPanel"></div>
+        </section>
+
+        <!-- 弹窗：查看玩家角色卡（只读） -->
+        <div id="modalCmView" class="modal-wrap hide">
+            <div class="modal modal-cm-view">
+                <div id="cmViewBody"></div>
+                <div class="modal-buttons">
+                    <button onclick="closeModal('modalCmView')">关闭</button>
+                </div>
+            </div>
+        </div>
+
+        <!--弹窗：新增/编辑物品-->
+        <div id="modalItem" class="modal-wrap hide">
+            <div class="modal">
+                <h3 id="modalItemTitle">添加物品</h3>
+                <input type="hidden" id="editItemIndex" value="-1">
+                <div><label class="label">物品名称</label><input id="itemName"></div>
+                <div style="margin-top:6px"><label class="label">物品分类</label>
+                    <select id="itemCategory">
+                        <option value="weapon">⚔ 武器</option>
+                        <option value="armor">🛡 盔甲</option>
+                        <option value="shield">🔰 盾牌</option>
+                        <option value="helmet">⛑ 头盔</option>
+                        <option value="ring">💍 戒指</option>
+                        <option value="accessory">📿 饰品</option>
+                        <option value="special">✨ 特殊装备</option>
+                        <option value="consumable">🧪 消耗品</option>
+                        <option value="misc">📦 杂物</option>
+                    </select>
+                </div>
+                <div class="twocol" style="margin-top:6px">
+                    <div><label class="label">数量</label><input id="itemQty" type="number" min="1" value="1"></div>
+                    <div><label class="label">单件重量(kg)</label><input id="itemWeight" type="number" min="0" step="0.1" value="1" onchange="if(String(this.value).trim()==='') this.value=defaultItemWeight(document.getElementById('itemCategory').value)"></div>
+                </div>
+                <div class="twocol" style="margin-top:6px">
+                    <div><label class="label">储物负重(kg)</label><input id="itemContainerCap" type="number" min="0" step="0.1" value="0"></div>
+                    <div><label class="label">生效方式</label>
+                        <select id="itemContainerMode">
+                            <option value="bag">背包内即生效</option>
+                            <option value="gear">需装备才生效</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="small" style="color:var(--muted)">填 &gt;0 视为储物道具（背包/马车/纳戒等）：每件增加等量载重上限。背包内生效按数量算；需装备的只在穿戴后生效（两个储物背包拖在街上不算，容量戒指放包里就能用）。0 表示普通物品</div>
+                <div style="margin-top:6px"><label class="label">图标emoji</label><input id="itemIcon"
+                        placeholder="例如 🗡️ 🧪"></div>
+                <div style="margin-top:6px"><label class="label">物品描述</label><textarea id="itemDesc"></textarea></div>
+
+                <div style="margin-top:6px"><label class="label">是否消耗品</label>
+                    <select id="itemIsConsume">
+                        <option value="0">普通物品</option>
+                        <option value="1">消耗品(可放快捷栏)</option>
+                    </select>
+                </div>
+                <div class="twocol" style="margin-top:6px">
+                    <div><label class="label">使用回复HP</label><input id="consumeHealHp" type="number" value="0"></div>
+                    <div><label class="label">使用回复MP</label><input id="consumeHealMp" type="number" value="0"></div>
+                </div>
+                <div class="twocol" style="margin-top:6px">
+                    <div><label class="label">使用增减 自定义条</label><input id="consumeBarName" list="gmBarOptions" placeholder="例如 能量（留空=不联动）"></div>
+                    <div><label class="label">增减量（负数为扣）</label><input id="consumeBarDelta" type="number" value="0"></div>
+                </div>
+                <div style="margin-top:6px"><label class="label">战斗中使用效果</label>
+                    <select id="itemUseEffect">
+                        <option value="">无（只对自己即时生效）</option>
+                        <option value="damage">对敌人造成伤害</option>
+                        <option value="heal">为目标恢复生命</option>
+                    </select>
+                </div>
+                <div style="margin-top:6px"><label class="label">目标类型</label>
+                    <select id="itemUseTarget">
+                        <option value="self">自己</option>
+                        <option value="ally">队友（含自己）</option>
+                        <option value="enemy">敌人</option>
+                    </select>
+                </div>
+                <div style="margin-top:6px"><label class="label">效果数值</label>
+                    <input type="number" id="itemUseAmount" min="0" max="999999" step="1" value="0">
+                </div>
+
+                <div style="margin-top:8px">
+                    <label class="label">装备加成（可视化填写；旧格式 {"damage":2} 自动兼容；点开分段编辑）</label>
+                    <details class="bonus-section">
+                        <summary>主加成（常驻生效）<span class="bonus-sum" id="sumItemMain"></span></summary>
+                        <div id="itemBonusMain"></div>
+                    </details>
+                    <details class="bonus-section">
+                        <summary>套装加成（穿戴指定件数后生效）<span class="bonus-sum" id="sumItemSet"></span></summary>
+                        <div class="twocol" style="margin-top:6px">
+                            <div><label class="label">套装名称</label><input id="setName" placeholder="例如 铁卫"></div>
+                            <div><label class="label">触发件数</label><input id="setPieces" type="number" min="0" value="2"></div>
+                        </div>
+                        <div id="itemBonusSet"></div>
+                    </details>
+                    <details class="bonus-section">
+                        <summary>条件加成（满足条件时生效）<span class="bonus-sum" id="sumItemCond"></span></summary>
+                        <div class="twocol" style="margin-top:6px">
+                            <div><label class="label">条件类型</label>
+                                <select id="condType">
+                                    <option value="">无条件</option>
+                                    <option value="hpBelow">HP 低于(%)</option>
+                                    <option value="hpAbove">HP 高于(%)</option>
+                                    <option value="enemyType">敌人类型</option>
+                                </select>
+                            </div>
+                            <div><label class="label">阈值 / 类型</label><input id="condValue" placeholder="50 或 亡灵"></div>
+                        </div>
+                        <div id="itemBonusCond"></div>
+                    </details>
+                    <details class="bonus-section">
+                        <summary>高级：原始JSON（编辑后失焦自动刷新上方表单）</summary>
+                        <textarea id="itemBonus" placeholder='留空表示无加成；兼容旧格式 {"damage":2}'></textarea>
+                    </details>
+                </div>
+
+                <div id="itemPresetRow" style="margin-top:6px;display:none">
+                    <label class="row" style="gap:6px;align-items:center">
+                        <input type="checkbox" id="itemSaveToPreset" checked>
+                        <span class="small">存入主持人预设物品库（以后一键发给任意角色）</span>
+                    </label>
+                </div>
+
+                <div class="modal-buttons">
+                    <button onclick="closeModal('modalItem')">取消</button>
+                    <button onclick="saveItemModal()">确认</button>
+                </div>
+            </div>
+        </div>
+
+        <!--弹窗：分配快捷消耗槽-->
+        <div id="modalQuickAssign" class="modal-wrap hide">
+            <div class="modal">
+                <h3>分配快捷消耗槽</h3>
+                <input type="hidden" id="targetQuickSlotIdx" value="0">
+                <div><label class="label">选择背包消耗品</label>
+                    <select id="quickItemSelect"></select>
+                </div>
+                <div class="modal-buttons">
+                    <button onclick="clearQuickSlot()">清空该槽位</button>
+                    <button onclick="confirmAssignQuickSlot()">确认分配</button>
+                </div>
+            </div>
+        </div>
+
+        <!--弹窗：新增/编辑技能-->
+        <div id="modalSkill" class="modal-wrap hide">
+            <div class="modal">
+                <h3 id="modalSkillTitle">添加技能</h3>
+                <input type="hidden" id="editSkillIndex" value="-1">
+                <div><label class="label">技能名称</label><input id="skillName"></div>
+                <div style="margin-top:6px"><label class="label">技能效果/描述</label><textarea id="skillDesc"></textarea>
+                </div>
+                <div style="margin-top:6px; display:flex; gap:8px; flex-wrap:wrap;">
+                    <div style="flex:1; min-width:130px">
+                        <label class="label">类型</label>
+                        <select id="skillKind" onchange="skillKindChanged()">
+                            <option value="">📝 纯描述（不结算）</option>
+                            <option value="damage">⚔ 伤害</option>
+                            <option value="heal">💚 治疗</option>
+                            <option value="buff">🎁 施加状态</option>
+                        </select>
+                    </div>
+                    <div style="flex:1; min-width:130px">
+                        <label class="label">骰子公式</label>
+                        <input id="skillFormula" placeholder="如 2d6+3">
+                    </div>
+                </div>
+                <div style="margin-top:6px; display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end;">
+                    <div style="flex:1; min-width:130px">
+                        <label class="label">资源消耗</label>
+                        <select id="skillCostType" onchange="skillCostTypeChanged()">
+                            <option value="">无消耗</option>
+                            <option value="mp">💧 MP（魔力）</option>
+                            <option value="custom">🔋 自定义条</option>
+                            <option value="hp">💔 HP（生命）</option>
+                        </select>
+                    </div>
+                    <div style="width:110px">
+                        <label class="label">消耗量</label>
+                        <input id="skillCostAmount" type="number" value="0" min="0" onchange="skillCostChanged()">
+                    </div>
+                    <div id="skillCostBarWrap" style="flex:1; min-width:130px; display:none">
+                        <label class="label">哪一条</label>
+                        <select id="skillCostBar" onchange="skillCostChanged()"></select>
+                    </div>
+                </div>
+                <div id="skillCostPreview" class="small" style="color:var(--blue); margin-top:2px"></div>
+                <div style="margin-top:8px; display:flex; align-items:center; gap:6px;">
+                    <input type="checkbox" id="skillHit" style="width:auto; margin:0" onchange="skillHitChanged()">
+                    <label class="label" for="skillHit" style="margin:0; cursor:pointer">伤害需命中检定（d20+命中加值 vs 目标AC）</label>
+                </div>
+                <div id="skillHitRow" style="margin-top:6px; display:none">
+                    <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end;">
+                        <div style="flex:1; min-width:120px">
+                            <label class="label">命中属性</label>
+                            <select id="skillAtkStat" onchange="skillAtkStatChanged()">
+                                <option value="strength">力量（近战默认）</option>
+                                <option value="dexterity">敏捷（远程/灵巧）</option>
+                                <option value="constitution">体质</option>
+                                <option value="intelligence">智力（法师）</option>
+                                <option value="wisdom">感知（神术）</option>
+                                <option value="charisma">魅力（魅惑/契约）</option>
+                            </select>
+                        </div>
+                        <div style="width:120px">
+                            <label class="label">额外命中加值</label>
+                            <input id="skillHitBonus" type="number" value="0" onchange="skillAtkStatChanged()">
+                        </div>
+                        <div id="skillHitPreview" class="small" style="color:var(--gold); padding-bottom:7px"></div>
+                    </div>
+                    <div class="small" style="color:var(--muted); margin-top:2px">命中加值 = 所选属性的调整值（六维合计换算）+ 额外加值（熟练、武器等）。只记录属性，不写死数字，升级/换装后自动更新。</div>
+                </div>
+                <div id="skillBuffRow" style="margin-top:6px; display:none">
+                    <label class="label">附带状态（来自你的快速施加库）</label>
+                    <select id="skillBuff"></select>
+                </div>
+                <div class="small" style="color:var(--muted); margin-top:2px">公式里的骰面会自动加上角色伤害加成；治疗只取骰面合计。选「施加状态」则从你的快速施加库挑一个状态，发动后由主持人一键加到目标身上。选了资源消耗会按「消耗量」扣 MP 或某条自定义机制，不够时发不出去。发动技能会占用本回合行动。</div>
+                <div class="modal-buttons">
+                    <button onclick="closeModal('modalSkill')">取消</button>
+                    <button onclick="saveSkillModal()">确认</button>
+                </div>
+            </div>
+        </div>
+
+        <!--弹窗：发动技能（掷骰 → 发给主持人）-->
+        <div id="modalSkillUse" class="modal-wrap hide">
+            <div class="modal">
+                <h3 id="modalSkillUseTitle">发动技能</h3>
+                <div id="skillUseInfo" class="skill-use-info"></div>
+                <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end;">
+                    <div style="flex:1; min-width:150px">
+                        <label class="label">目标</label>
+                        <select id="skillUseTarget" onchange="rollSkillUse()"></select>
+                    </div>
+                    <div>
+                        <label class="label">命中加值</label>
+                        <input id="skillUseAtkMod" type="number" value="0" style="width:90px" onchange="rollSkillUse()">
+                    </div>
+                </div>
+                <div id="skillUseResult" class="su-result"></div>
+                <div class="modal-buttons">
+                    <button onclick="closeModal('modalSkillUse')">取消</button>
+                    <button onclick="rollSkillUse()">🔄 重掷</button>
+                    <button onclick="sendSkillUse()">发送给主持人结算</button>
+                </div>
+            </div>
+        </div>
+
+        <!--弹窗：使用消耗品选目标（战斗中）-->
+        <div id="modalItemUse" class="modal-wrap" style="display:none">
+            <div class="modal modal-box">
+                <h3 id="modalItemUseTitle">使用物品</h3>
+                <div class="small" id="itemUseInfo"></div>
+                <div style="margin-top:6px"><label class="label">目标</label><select id="itemUseTargetSel"></select></div>
+                <div class="modal-buttons">
+                    <button onclick="closeItemUseModal()">取消</button>
+                    <button class="orange" onclick="confirmItemUse()">使用</button>
+                </div>
+            </div>
+        </div>
+
+        <!--弹窗：新增/编辑Buff-->
+        <div id="modalBuff" class="modal-wrap hide">
+            <div class="modal">
+                <h3 id="modalBuffTitle">新增状态/Buff</h3>
+                <input type="hidden" id="editBuffIndex" value="-1">
+                <div><label class="label">状态名称</label><input id="buffName"></div>
+                <div style="margin-top:6px"><label class="label">剩余回合(填0永久)</label><input id="buffRound" type="number"
+                        value="3" min="0"></div>
+                <div style="margin-top:6px"><label class="label">效果描述</label><textarea id="buffDesc"></textarea></div>
+                <div style="margin-top:6px; display:flex; gap:8px; flex-wrap:wrap;">
+                    <div style="flex:1; min-width:130px">
+                        <label class="label">类型</label>
+                        <select id="buffType">
+                            <option value="buff">✨ 增益</option>
+                            <option value="debuff">💀 减益</option>
+                            <option value="hot">💚 持续回复</option>
+                            <option value="dot">🩸 持续伤害</option>
+                            <option value="other">🌀 其他</option>
+                        </select>
+                    </div>
+                    <div style="flex:1; min-width:130px">
+                        <label class="label">每回合 HP 变化</label>
+                        <input id="buffHpRound" type="number" value="0" step="1">
+                    </div>
+                    <div style="flex:1; min-width:130px">
+                        <label class="label">每回合 MP 变化</label>
+                        <input id="buffMpRound" type="number" value="0" step="1">
+                    </div>
+                </div>
+                <div class="small" style="color:var(--muted); margin-top:2px">每回合变化：正数恢复，负数扣血，点击「回合结束」时结算</div>
+                <div class="twocol" style="margin-top:6px">
+                    <div><label class="label">关联自定义条</label><input id="buffBarName" list="gmBarOptions" placeholder="留空=不联动"></div>
+                    <div><label class="label">存续要求（条 ≥）</label><input id="buffBarMin" type="number" value="0" min="0"></div>
+                </div>
+                <div class="twocol" style="margin-top:6px">
+                    <div><label class="label">施加时增减条</label><input id="buffBarApply" type="number" value="0"></div>
+                    <div><label class="label">每回合增减条</label><input id="buffBarRound" type="number" value="0"></div>
+                </div>
+                <div class="small" style="color:var(--muted); margin-top:2px">填了「关联自定义条」后：施加时/每回合按数值加减该条；条值低于「存续要求」时，此状态在回合结算时自动失效。</div>
+                <details class="bonus-section">
+                    <summary>属性加成（可选，按回合临时生效）<span class="bonus-sum" id="sumBuff"></span></summary>
+                    <div id="buffBonusFields"></div>
+                </details>
+                <div style="margin-top:10px; display:flex; align-items:center; gap:6px;">
+                    <input type="checkbox" id="buffSaveToLib" checked style="width:auto; margin:0">
+                    <label class="label" for="buffSaveToLib" style="margin:0; cursor:pointer">存入快速施加库（同名会更新）</label>
+                </div>
+                <div class="modal-buttons">
+                    <button onclick="closeModal('modalBuff')">取消</button>
+                    <button onclick="saveBuffModal()">确认</button>
+                </div>
+            </div>
+        </div>
+
+        <!--弹窗：种族与等级成长-->
+        <div id="modalRace" class="modal-wrap hide">
+            <div class="modal">
+                <h3>种族加成</h3>
+                <div class="small" style="color:var(--muted);margin:4px 0">
+                    种族是独立乘区，在所有加成之后生效：最终 = 中间值 ×(1 + 种族百分比 + 每级百分比×等级) + 种族固定值 + 每级固定×等级
+                </div>
+                <label class="label">种族</label>
+                <input id="raceName" list="racePresets" placeholder="例如 精灵">
+                <datalist id="racePresets">
+                    <option value="人类"></option>
+                    <option value="精灵"></option>
+                    <option value="矮人"></option>
+                    <option value="半身人"></option>
+                    <option value="兽人"></option>
+                    <option value="龙裔"></option>
+                    <option value="提夫林"></option>
+                </datalist>
+                <details class="bonus-section">
+                    <summary>种族属性加成（固定 / 每级 / 百分比乘区 / 抗性）<span class="bonus-sum" id="sumRace"></span></summary>
+                    <div id="raceBonusFields"></div>
+                </details>
+                <div class="modal-buttons">
+                    <button onclick="closeModal('modalRace')">取消</button>
+                    <button onclick="saveRaceModal()">确认</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="modalExtra" class="modal-wrap hide">
+            <div class="modal">
+                <h3>其他修正</h3>
+                <div class="small" style="color:var(--muted);margin:4px 0">
+                    职业、血脉、灵根之类的东西放这里：只给「不随等级成长」的固定/百分比/抗性加成，外加几个能跟战斗状态联动的小被动。可以有任意多条，复合职业就加多条。
+                </div>
+                <div id="extraModList" style="margin:6px 0"></div>
+                <div class="modal-buttons">
+                    <button onclick="addExtraMod()">＋ 添加修正</button>
+                    <button onclick="closeModal('modalExtra')">取消</button>
+                    <button onclick="saveExtraModal()">确认</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="modalLevel" class="modal-wrap hide">
+            <div class="modal">
+                <h3>等级成长</h3>
+                <details class="bonus-section">
+                    <summary>规则说明（里程碑制）</summary>
+                    <div class="small" style="color:var(--muted);margin:4px 0">
+                        里程碑制：到达该等级即生效，并持续到被更高的行覆盖，不必每级都填。<br>
+                        例：2级填 10% → 2、3级都是 +10%；4级填 20% → 从4级起 +20%（2级那行才失效）。<br>
+                        公式：属性 = 基础 ×(1 + 当前生效档位加成)
+                    </div>
+                </details>
+                <div class="small" style="color:var(--muted);margin:4px 0">
+                    当前等级 <b id="growthLevelPreview">1</b> 生效档位：<span id="growthPreview">无</span>
+                </div>
+                <div class="level-table-wrap">
+                    <table class="level-table">
+                        <thead>
+                            <tr>
+                                <th>等级</th>
+                                <th>力量</th>
+                                <th>敏捷</th>
+                                <th>体质</th>
+                                <th>智力</th>
+                                <th>感知</th>
+                                <th>魅力</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="levelTableBody"></tbody>
+                    </table>
+                </div>
+                <div class="twocol" style="margin-top:6px">
+                    <button onclick="addLevelRow()">＋ 添加等级</button>
+                    <button onclick="clearLevelRows()">清空等级表</button>
+                </div>
+                <div class="modal-buttons">
+                    <button onclick="closeModal('modalLevel')">取消</button>
+                    <button onclick="saveLevelModal()">确认</button>
+                </div>
+            </div>
+        </div>
+
+        <!--弹窗：重置确认-->
+        <div id="modalReset" class="modal-wrap hide">
+            <div class="modal">
+                <h3>重置当前角色</h3>
+                <p>将会把当前角色恢复成初始模板，确定吗？</p>
+                <div class="modal-buttons">
+                    <button onclick="closeModal('modalReset')">取消</button>
+                    <button class="danger" onclick="doReset()">确认重置</button>
+                </div>
+            </div>
+        </div>
+
+        <!--弹窗：主持人预设物品库-->
+        <div id="modalItemPresets" class="modal-wrap hide">
+            <div class="modal modal-wide">
+                <h3>📦 预设物品库</h3>
+                <div class="small" style="color:var(--muted);margin-bottom:8px">
+                    发放目标：<b id="gmPresetTarget">未选择</b> · 先回主持人面板的「背包 / 金币」选人
+                </div>
+                <div id="gmPresetModalList" class="gm-preset-modal-list"></div>
+                <div class="modal-buttons">
+                    <button onclick="closeModal('modalItemPresets')">关闭</button>
+                </div>
+            </div>
+        </div>
+
+        <!--弹窗：自定义条联动设置-->
+        <div id="modalBarCfg" class="modal-wrap hide">
+            <div class="modal modal-wide">
+                <h3 id="barCfgTitle">🔋 自定义条 · 联动设置</h3>
+                <div class="small" style="color:var(--muted);margin-bottom:8px">名字、数值、颜色在角色卡里直接改；这里配置战斗联动。可以填负数——条越高伤害越低、或每回合倒扣，都是合法的惩罚机制。</div>
+
+                <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:8px">
+                    <label class="small" style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="barCfgShield" style="width:auto;margin:0"> 🛡 护盾条：受伤先扣这条</label>
+                    <label class="small" style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="barCfgAllowNeg" style="width:auto;margin:0"> 允许负值（可透支）</label>
+                </div>
+                <div class="small" style="color:var(--muted);margin:-4px 0 8px">护盾条可以当额外血量用：状态技能给它加值就是「套盾」，伤害先扣盾再扣 HP。默认不允许负值，避免把条透支成负数去放大招。</div>
+
+                <div class="twocol">
+                    <div><label class="label">🛡 护盾吸收方式</label>
+                        <select id="barShieldMode" onchange="barShieldModeChanged()">
+                            <option value="value">按伤害数值扣盾</option>
+                            <option value="hits">次数护盾（打固定下数）</option>
+                        </select>
+                    </div>
+                    <div id="barShieldHitWrap"><label class="label">每次受击扣几层</label>
+                        <input id="barShieldHitCost" type="number" min="1" value="1"></div>
+                </div>
+                <div class="twocol" style="margin-top:4px">
+                    <div><label class="label">固定减伤（有盾时每次）</label><input id="barShieldFlat" type="number" min="0" value="0"></div>
+                    <div><label class="label">百分比减伤%（最多 90）</label><input id="barShieldPct" type="number" min="0" max="90" value="0"></div>
+                </div>
+                <div class="small" style="color:var(--muted);margin-top:2px">次数护盾：条值就是剩余层数，任何伤害都按「一层挡一击」处理（比如 3 层 = 要打 3 下才破）。减伤只在护盾条有值时生效，先减伤再扣盾。</div>
+
+                <label class="label">攻击联动（伤害加成）</label>
+                <div class="twocol">
+                    <div><label class="label">按条值比例 +伤害%（满值时的值）</label><input id="barCfgAtkPct" type="number" value="0"></div>
+                    <div><label class="label">满值时额外 +伤害%</label><input id="barCfgFullAtk" type="number" value="0"></div>
+                </div>
+                <div class="small" style="color:var(--muted);margin-top:2px">例：填 20 时，条 50% → +10% 伤害，条满 → +20%；再填「满值额外 10」时满值共 +30%。填负数就是越满越虚。</div>
+
+                <label class="label" style="margin-top:10px">增长 / 消耗机制（大招条就用这里；负数即惩罚）</label>
+                <div class="bonus-form" style="margin-top:4px">
+                    <div><label class="label">回合结束</label><input id="barGainRound" type="number" value="0"></div>
+                    <div><label class="label">伤害技能</label><input id="barGainDamage" type="number" value="0"></div>
+                    <div><label class="label">治疗技能</label><input id="barGainHeal" type="number" value="0"></div>
+                    <div><label class="label">状态技能</label><input id="barGainBuff" type="number" value="0"></div>
+                    <div><label class="label">击杀敌人</label><input id="barGainKill" type="number" value="0"></div>
+                </div>
+
+                <label class="label" style="margin-top:10px">满值 / 归零自动挂状态</label>
+                <div class="twocol">
+                    <div><label class="label">满值挂状态</label><input id="barFullName" placeholder="状态名（留空=不触发）"></div>
+                    <div><label class="label">持续回合（0=永久）</label><input id="barFullRound" type="number" min="0" value="0"></div>
+                </div>
+                <div class="twocol" style="margin-top:4px">
+                    <div><label class="label">归零挂状态</label><input id="barEmptyName" placeholder="状态名（留空=不触发）"></div>
+                    <div><label class="label">持续回合（0=永久）</label><input id="barEmptyRound" type="number" min="0" value="0"></div>
+                </div>
+
+                <div class="modal-buttons">
+                    <button onclick="closeModal('modalBarCfg')">取消</button>
+                    <button class="orange" onclick="saveBarCfg()">保存</button>
+                </div>
+            </div>
+        </div>
+
+        <!--弹窗：局域网房间-->
+        <div id="modalRoom" class="modal-wrap hide">
+            <div class="modal modal-wide"></div>
+        </div>
+
+        <datalist id="gmBarOptions"></datalist>
+
+        <div class="foot" id="status">JigeRPG · 本地运行，不需要联网</div>
+    </main>
+
+            <!-- 启动自检：ES Module 不能用 file:// 直接打开，否则整页功能失效、看起来像“版本不对” -->
+            <script>
+                (function () {
+                    function showBootTip(msg) {
+                        if (document.getElementById("bootTip")) return;
+                        var tip = document.createElement("div");
+                        tip.id = "bootTip";
+                        tip.textContent = msg;
+                        tip.style.cssText = "position:fixed;left:0;right:0;bottom:0;z-index:9999;background:#b3261e;color:#fff;padding:10px 14px;font:14px/1.6 sans-serif;text-align:center";
+                        document.body.appendChild(tip);
+                    }
+                    if (location.protocol === "file:") {
+                        showBootTip("⚠ 当前是用 file:// 直接双击打开的，ES Module 会被浏览器拦截（页面看起来像空白/旧版）。请在 E:\\JigeRPG\\src 目录运行 node serve.mjs，然后访问 http://localhost:8080");
+                        return;
+                    }
+                    window.addEventListener("load", function () {
+                        setTimeout(function () {
+                            if (!window.__jigeBooted) {
+                                showBootTip("⚠ 脚本没有成功加载。请确认已在 E:\\JigeRPG\\src 运行 node serve.mjs，并通过 http://localhost:8080 打开本页（不要双击 html 文件）。");
+                            }
+                        }, 1500);
+                    });
+                })();
+            </script>
+            <script type="module" src="js/bridge.js?v=20261103b"></script>
+</body>
