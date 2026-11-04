@@ -12,7 +12,7 @@ export function checkpointProject(checkout){
   for(const candidate of [checkout,join(checkout,'origin')])if(existsSync(join(candidate,'package.json'))&&existsSync(join(candidate,'src/server/app.ts')))return candidate;
   throw new Error('Checkpoint has no supported application layout.');
 }
-export async function verifyRollback(reference='milestone-authoritative-rules'){
+export async function verifyRollback(reference='HEAD'){
 register();
 const repository=project;
 const checkpoint=execFileSync('git',['-C',repository,'rev-parse',reference],{encoding:'utf8',windowsHide:true}).trim();

@@ -19,7 +19,7 @@ test('rollback verification resolves both flat releases and historical origin-la
  assert.equal(checkpointProject(flat),flat);assert.equal(checkpointProject(legacy),join(legacy,'origin'));assert.throws(()=>checkpointProject(temporaryRoot),/no supported application layout/);
 });
 test('Windows launch wrappers address the flat scripts and local npm start uses the same host options',async()=>{
- for(const[file,script]of [['启动JigeRPG.cmd','start.ps1'],['安装或修复环境.cmd','setup.ps1']]){const text=await readFile(join(project,file),'utf8');assert.ok(text.includes(`%~dp0scripts\\${script}`));assert.equal(text.includes('origin\\scripts'),false);}
+ for(const[file,script]of [['启动JigeRPG.cmd','start.ps1'],['安装或修复环境.cmd','setup.ps1']]){const text=await readFile(join(project,file),'utf8');assert.ok(text.includes(`%~dp0scripts\\${script}`));assert.equal(text.includes('origin\\scripts'),false);assert.ok(text.includes('"%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"'));assert.ok(text.includes('"%SystemRoot%\\System32\\chcp.com"'));}
  const pkg=JSON.parse(await readFile(join(project,'package.json'),'utf8'));assert.equal(pkg.scripts['start:local'],'node scripts/host.mjs --local');assert.equal(pkg.scripts.legacy,undefined);
 });
 test('verified runtime cache is copied only after its pinned SHA matches', {skip:process.platform!=='win32'},async t=>{

@@ -18,7 +18,8 @@ if(modules?.isSymbolicLink()&&!existsSync(join(projectRoot,'.tools/dependency-lo
 const dataDir=resolve(projectRoot,'work/launcher-'+randomUUID());
 const port=await unusedPort();
 const powershell=join(process.env.SystemRoot||'C:/Windows','System32/WindowsPowerShell/v1.0/powershell.exe');
-const child=spawn(powershell,['-NoProfile','-ExecutionPolicy','Bypass','-File',resolve(projectRoot,'scripts/start.ps1'),'-LocalOnly','-NoOpen','-Port',String(port),'-DataDir',dataDir],{cwd:projectRoot,env,windowsHide:true,stdio:['ignore','pipe','pipe']});
+const cmd=join(process.env.SystemRoot||'C:/Windows','System32/cmd.exe'),launcher=join(projectRoot,'启动JigeRPG.cmd'),usesCmd=existsSync(launcher);
+const child=usesCmd?spawn(cmd,['/d','/s','/c',`""${launcher}" -LocalOnly -NoOpen -Port ${port} -DataDir "${dataDir}""`],{cwd:projectRoot,env,windowsHide:true,windowsVerbatimArguments:true,stdio:['ignore','pipe','pipe']}):spawn(powershell,['-NoProfile','-ExecutionPolicy','Bypass','-File',resolve(projectRoot,'scripts/start.ps1'),'-LocalOnly','-NoOpen','-Port',String(port),'-DataDir',dataDir],{cwd:projectRoot,env,windowsHide:true,stdio:['ignore','pipe','pipe']});
 let diagnostic='',launchError;const capture=data=>{diagnostic=(diagnostic+String(data)).slice(-32000);};child.stderr.on('data',capture);child.stdout.on('data',capture);child.once('error',error=>{launchError=error;});
 try{
   let health;
@@ -32,7 +33,7 @@ try{
   assert.equal(health?.ok,true,'Windows launcher should build and start the actual host');
   const page=await fetch(`http://localhost:${port}/`);assert.equal(page.status,200);assert.match(await page.text(),/assets\/app-/);
   const after=systemNodeVersion(env);assert.equal(after,before);
-  const result={windowsPowerShellLauncher:true,productionPage:true,systemNodeUnchanged:true,systemNodeVersion:after,dataIsolated:true};
+  const result={windowsCmdLauncher:usesCmd,windowsPowerShellLauncher:true,productionPage:true,systemNodeUnchanged:true,systemNodeVersion:after,dataIsolated:true};
   if(onStarted)await onStarted({projectRoot,dataDir,port,health});
   return result;
 }finally{

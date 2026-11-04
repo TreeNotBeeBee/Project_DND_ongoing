@@ -41,7 +41,7 @@ async function sha256(path){const hash=createHash('sha256');for await(const chun
 export async function verifyDistribution(options){
  if(process.platform!=='win32')throw new Error('This verifies the Windows source-ZIP bootstrap.');
  const workRoot=join(project,'work');await mkdir(workRoot,{recursive:true});const qaRoot=await mkdtemp(join(workRoot,'distribution-'));
- const archive=join(qaRoot,'source.zip'),extracted=join(qaRoot,'extracted');await mkdir(extracted);
+ const archive=join(qaRoot,'source.zip'),extracted=join(qaRoot,'解压测试 with spaces');await mkdir(extracted);
  const proof={sourceKind:options.commit?'github-exact-commit':'local-archive',requestedCommit:options.commit||null,qaRoot};
  try{
   if(options.commit){
