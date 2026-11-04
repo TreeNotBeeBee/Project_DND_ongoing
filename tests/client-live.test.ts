@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { basename, join, resolve, sep } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { chromium, expect, type Browser, type Page } from '@playwright/test';
+import { chromium, expect, type Browser, type BrowserContextOptions, type Page } from '@playwright/test';
 import { createApplication } from '../src/server/app';
 import type { Actor, Snapshot } from '../src/shared/model';
 
@@ -22,7 +22,13 @@ after(async () => {
   const target = resolve(directory), root = resolve(tmpdir()) + sep;
   if (target.startsWith(root) && basename(target).startsWith('jige-clientlive-')) await rm(target, { recursive: true, force: true });
 });
-const state = (page: Page) => page.evaluate(async () => (await fetch('/api/state')).json() as Promise<Snapshot>);
+const state = (page: Page) => page.evaluate(async () => (await fetch('/api/state', { signal: AbortSignal.timeout(15_000) })).json() as Promise<Snapshot>);
+async function clientContext(options: BrowserContextOptions) {
+  const context = await browser.newContext(options);
+  context.setDefaultTimeout(15_000);
+  context.setDefaultNavigationTimeout(20_000);
+  return context;
+}
 const { PNG } = createRequire(import.meta.url)('pngjs');
 async function assertMapPainted(page: Page) {
   await expect.poll(async () => {
@@ -63,9 +69,14 @@ async function assertLargeTokenPainted(page: Page, actor: Actor, side: 2 | 3, ca
   }, { message: `${actor.name} at ${JSON.stringify(actor.position)} must render across its actual ${side}×${side} footprint` }).toEqual(offsets.map(() => [83, 61, 67]));
   if (process.env.CLIENT_SCREENSHOT_DIR) await page.screenshot({ path: join(process.env.CLIENT_SCREENSHOT_DIR, `large-${side}-diagnostic.png`), fullPage: true });
 }
-test('actual GM and mobile player create, equip, move, attack, migrate and recover across sessions', { timeout: 120000 }, async () => {
-  const gmContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
-  const playerContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+// Windows CI uses software WebGL and shares CPU with the other behavior suites.
+// Give the journey room to finish; action, navigation and state-read limits stay short.
+test('actual GM and mobile player create, equip, move, attack, migrate and recover across sessions', { timeout: process.env.CI === 'true' ? 300_000 : 120_000 }, async () => {
+  const started = performance.now();
+  const checkpoint = (phase: string) => console.info(`[client-live] +${Math.round(performance.now() - started)}ms ${phase}`);
+  checkpoint('started');
+  const gmContext = await clientContext({ viewport: { width: 1440, height: 1000 } });
+  const playerContext = await clientContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   const gm = await gmContext.newPage(); const player = await playerContext.newPage();
   gm.on('console', message => { if (message.text().includes('地图图形初始化失败')) console.warn(message.text()); });
   const errors: string[] = []; gm.on('pageerror', error => errors.push(error.message)); player.on('pageerror', error => errors.push(error.message));
@@ -100,6 +111,7 @@ test('actual GM and mobile player create, equip, move, attack, migrate and recov
   assert.ok(hero.inventory.some(item => item.contentId === 'equipment:greatsword'));
   assert.equal(hero.inventory.find(item => item.contentId === 'equipment:javelin')?.quantity, 8);
   assert.equal(hero.resources.find(resource => resource.id === 'gp')?.current, 18);
+  checkpoint('passed: identities and source-based character creation');
   await expect(gm.locator('.battle-map canvas')).toBeVisible();
   await expect(player.locator('.battle-map canvas')).toBeVisible();
   if (process.env.CLIENT_SCREENSHOT_DIR) { await mkdir(process.env.CLIENT_SCREENSHOT_DIR, { recursive: true }); await gm.screenshot({ path: join(process.env.CLIENT_SCREENSHOT_DIR, 'map-diagnostic.png'), fullPage: true }); }
@@ -123,7 +135,13 @@ test('actual GM and mobile player create, equip, move, attack, migrate and recov
   const gate = new Promise<void>(done => { release = done; }); const arrived = new Promise<void>(done => { requested = done; });
   await player.route('**/api/command', async route => { requested(); await gate; await route.continue(); }, { times: 1 });
   const resting = player.getByRole('button', { name: '短休 · 1 生命骰', exact: true }).click();
-  await arrived;
+  let arrivalTimeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      Promise.all([arrived, resting]),
+      new Promise<never>((_, reject) => { arrivalTimeout = setTimeout(() => reject(new Error('Delayed conflict-probe command did not arrive within 15 seconds')), 15_000); }),
+    ]);
+  } finally { clearTimeout(arrivalTimeout); }
   await gm.getByRole('button', { name: '冒险桌', exact: true }).click();
   await gm.getByRole('button', { name: '场景设置', exact: true }).click();
   await gm.getByRole('button', { name: '保存场景', exact: true }).click();
@@ -135,6 +153,7 @@ test('actual GM and mobile player create, equip, move, attack, migrate and recov
   await player.getByRole('button', { name: '按最新状态重提' }).click();
   await expect(player.locator('.pending-panel')).toHaveCount(0);
   await expect(player.locator('.global-error')).toHaveCount(0);
+  checkpoint('passed: canvas pixels, equipment and revision-conflict recovery');
   await gm.getByRole('button', { name: 'Ⅱ 暂停', exact: true }).click();
   await expect(player.locator('.paused-banner')).toBeVisible();
   await gm.getByRole('button', { name: '继续冒险 →', exact: true }).click();
@@ -194,6 +213,7 @@ test('actual GM and mobile player create, equip, move, attack, migrate and recov
   await clickGrid(4.5, 4.5); await clickGrid(5.5, 5.5);
   await expect.poll(async () => (await state(gm)).state.scene.terrain.length).toBe(1);
   assert.equal((await state(gm)).state.scene.terrain[0].type, 'difficult');
+  checkpoint('passed: encounter, resource adjustments and scene editing');
   await player.getByRole('button', { name: '旧卡迁移', exact: true }).click();
   await player.locator('.upload-drop input').setInputFiles({ name: 'legacy.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ name: '旧日勇者', strength: 18, maxHpBase: 50, physicalResist: 80, companions: [{ id: 'old-pet', name: '旧狼' }] })) });
   await player.getByRole('checkbox', { name: /我已保留这份原始文件/ }).check();
@@ -210,13 +230,14 @@ test('actual GM and mobile player create, equip, move, attack, migrate and recov
   await expect(player.locator('.pending-panel')).toHaveCount(0);
   await expect.poll(async () => (await state(gm)).state.actors.find(actor => actor.id === hero.id)!.position.x).toBe(2);
   await expect(player.locator('.connection-pill')).toContainText('已同步', { timeout: 20000 });
-  const recoveredContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true });
+  const recoveredContext = await clientContext({ viewport: { width: 390, height: 844 }, isMobile: true });
   const recovered = await recoveredContext.newPage(); await recovered.goto(base);
   await recovered.getByRole('button', { name: '恢复身份', exact: true }).click();
   await recovered.getByRole('textbox', { name: '身份恢复码' }).fill(recoveryCode);
   await recovered.getByRole('button', { name: '恢复我的身份' }).click();
   await expect(recovered.getByRole('heading', { name: /真正的星落城/ })).toBeVisible();
   assert.equal((await state(recovered)).session.member.id, hero.ownerId);
+  checkpoint('passed: migration, offline retry and cross-session recovery');
   await recovered.getByRole('button', { name: /自由掷骰/ }).click();
   await recovered.getByRole('textbox', { name: '骰式', exact: true }).fill('2d6+1d4+3');
   await recovered.getByRole('button', { name: /投掷并结算/ }).click();
@@ -286,6 +307,7 @@ test('actual GM and mobile player create, equip, move, attack, migrate and recov
   await recovered.getByRole('button', { name: /投掷并结算/ }).click();
   await expect.poll(async () => (await state(recovered)).state.actors.find(actor => actor.id === wizard.id)!.position).toEqual(destination);
   assert.equal((await state(recovered)).state.actors.find(actor => actor.id === wizard.id)!.resources.find(resource => resource.id === 'slot-2')!.current, slotsBefore - 1);
+  checkpoint('passed: server dice, alternate build and wizard teleport');
   await gm.getByRole('button', { name: '规则图鉴', exact: true }).click();
   await gm.getByRole('textbox', { name: '搜索规则目录' }).fill('Wand of Magic Missiles');
   await gm.locator('.catalog-card').first().click();
@@ -326,6 +348,7 @@ test('actual GM and mobile player create, equip, move, attack, migrate and recov
   await gm.getByRole('button', { name: '记录裁定并完成', exact: true }).click();
   await expect.poll(async () => (await state(recovered)).state.events.some(event => event.type === 'gm-ruling' && event.message.includes('守卫看见木箱'))).toBe(true);
   assert.equal((await state(recovered)).state.actors.find(actor => actor.id === wizard.id)!.resources.find(resource => resource.id === 'slot-2')!.current, slotsBefore - 1);
+  checkpoint('passed: charged item, world timing and narrative ruling');
   await gm.getByRole('button', { name: '规则图鉴', exact: true }).click();
   await gm.getByRole('textbox', { name: '搜索规则目录' }).fill('Ring of Spell Storing');
   await gm.locator('.catalog-card').first().click();
@@ -383,6 +406,7 @@ test('actual GM and mobile player create, equip, move, attack, migrate and recov
   const auguryOwner = (await state(recovered)).state.actors.find(actor => actor.id === wizard.id)!;
   assert.equal(auguryOwner.inventory.find(item => item.componentFor === 'spell:augury')!.quantity, 1);
   assert.equal(auguryOwner.resources.find(resource => resource.id === 'slot-2')!.current, slotsBefore - 1);
+  checkpoint('passed: ring storage and material-gated casting');
   await gm.getByRole('button', { name: '规则图鉴', exact: true }).click();
   await gm.getByRole('textbox', { name: '搜索规则目录' }).fill('wolf');
   await gm.getByRole('button', { name: '怪物', exact: true }).click();
@@ -413,6 +437,7 @@ test('actual GM and mobile player create, equip, move, attack, migrate and recov
   assert.equal(rematched.ownerId, hero.ownerId); assert.equal(rematched.choices?.monsterId, 'wolf');
   assert.equal(rematched.choices?.parentActorId, hero.id); assert.equal(rematched.classes.length, 0);
   assert.equal(rematched.hp.max, sourceCompanion.hp.max);
+  checkpoint('passed: source companions and legacy rematch');
   await gm.getByRole('button', { name: '规则图鉴', exact: true }).click();
   await gm.getByRole('textbox', { name: '搜索规则目录' }).fill('ogre');
   await gm.getByRole('button', { name: '怪物', exact: true }).click();
@@ -460,6 +485,7 @@ test('actual GM and mobile player create, equip, move, attack, migrate and recov
   grab = camera.point(giant.position.x + 2.5, giant.position.y + 2.5);
   await gm.mouse.click(grab.x, grab.y);
   await expect(gm.locator('.actor-panel-header h2')).toHaveText(giant.name);
+  checkpoint('passed: Large/Huge pixels, full-footprint movement and thrown weapon');
   await gm.getByRole('button', { name: '冒险桌', exact: true }).click();
   await gm.locator('.roster-card', { hasText: '灰岩' }).click();
   await gm.getByRole('button', { name: '选择', exact: true }).click();
@@ -476,4 +502,5 @@ test('actual GM and mobile player create, equip, move, attack, migrate and recov
   await recovered.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
   if (process.env.CLIENT_SCREENSHOT_DIR) { await mkdir(process.env.CLIENT_SCREENSHOT_DIR, { recursive: true }); await gm.screenshot({ path: join(process.env.CLIENT_SCREENSHOT_DIR, 'live-desktop.png'), fullPage: true }); await recovered.screenshot({ path: join(process.env.CLIENT_SCREENSHOT_DIR, 'live-mobile.png'), fullPage: true }); await recovered.screenshot({ path: join(process.env.CLIENT_SCREENSHOT_DIR, 'live-mobile-viewport.png') }); }
   await recoveredContext.close(); await playerContext.close(); await gmContext.close();
+  checkpoint('completed: final pixels, error checks and browser context cleanup');
 });
