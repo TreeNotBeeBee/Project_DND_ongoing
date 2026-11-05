@@ -1,0 +1,4 @@
+.builder-capability{display:inline-flex;border:1px solid #465369;border-radius:4px;padding:3px 6px;font-size:9px;white-space:nowrap;color:#a9bbd1;background:#263142}
+.builder-capability[data-capability="unsupported"]{color:#d5aaa4;border-color:#63433f;background:#36282a}
+.builder-capability[data-capability="automatic"]{color:#a3c8b2;border-color:#3f5b4b;background:#24332c}
+.builder-capability[data-capability="adjudication"]{color:#cbb6dc;border-color:#564567;background:#30283c}
