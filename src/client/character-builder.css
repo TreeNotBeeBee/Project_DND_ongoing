@@ -2,3 +2,26 @@
 .builder-capability[data-capability="unsupported"]{color:#d5aaa4;border-color:#63433f;background:#36282a}
 .builder-capability[data-capability="automatic"]{color:#a3c8b2;border-color:#3f5b4b;background:#24332c}
 .builder-capability[data-capability="adjudication"]{color:#cbb6dc;border-color:#564567;background:#30283c}
+.dialog[open]:has(>.builder-checklist),.dialog[open]:has(>.builder-levelup-body){display:flex;flex-direction:column;overflow:hidden;height:min(850px,calc(100dvh - 56px))}
+.dialog:has(>.builder-checklist)>.dialog-header,.dialog:has(>.builder-levelup-body)>.dialog-header{position:relative;flex-shrink:0}
+.dialog:has(>.builder-checklist)>.editor-tabs{flex-shrink:0}
+.builder-checklist{flex-shrink:0;padding:12px 26px;background:#252b30;border-bottom:1px solid #57503e}
+.builder-checklist>div{display:flex;gap:8px;align-items:center;justify-content:space-between}
+.builder-checklist strong{color:#ddc38b;font-size:12px;font-weight:500}.builder-checklist>div>small{font-size:10px;color:#a4b0be}
+.builder-checklist ol{list-style:none;padding:0;margin:8px 0;max-height:88px;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin}
+.builder-checklist li+li{margin-top:3px}.builder-checklist li button{display:flex;gap:9px;width:100%;text-align:left;align-items:center;border:1px solid transparent;border-radius:5px;background:#1b242c;padding:6px 8px;color:#c5cedb;cursor:pointer;font:inherit}
+.builder-checklist li button:hover,.builder-checklist li button:focus-visible{border-color:#b99c62;background:#303746;outline:none}
+.builder-checklist li button>span{font-family:monospace;font-size:10px;color:#a68f64}.builder-checklist li button>b{font-size:11px;font-weight:400;flex:1;min-width:0;line-height:1.5;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.builder-checklist li button>small{font-size:9px;color:#a6b4c9;flex-shrink:0}.builder-checklist.has-errors{border-color:#9f7167}.builder-checklist.has-errors strong{color:#e5afa5}
+.builder-capability-help{font-size:10px;color:#99a8bd}.builder-capability-help summary{cursor:pointer;list-style-position:inside}.builder-capability-help p{line-height:1.7;margin:7px 0 0;max-height:65px;overflow:auto}
+.builder-feedback{flex-shrink:0;margin:0;padding:11px 26px;color:#ffd1c7;background:#442e32;border-bottom:1px solid #8f605a;font-size:12px;line-height:1.65;max-height:95px;overflow:auto;overflow-wrap:anywhere}
+.builder-fields,.builder-levelup-body{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;scroll-padding-block:20px;outline:none}
+.builder-fields [data-builder-field]:focus-visible,.builder-fields [data-builder-field] input:focus-visible{outline:2px solid #d4b67e;outline-offset:3px}
+.builder-footer{position:relative;bottom:auto;flex-shrink:0;display:flex;flex-direction:column;align-items:stretch;padding:12px 26px;gap:10px}
+.builder-step-navigation{display:flex;align-items:center;justify-content:space-between;gap:12px}.builder-step-navigation>span{color:#a3b2c6;font-size:10px}.builder-step-navigation>.button{font-size:11px;min-height:33px}
+.builder-save-controls{display:flex;justify-content:flex-end;gap:9px;align-items:center}.builder-save-controls>p{margin:0 auto 0 0;font-size:10px;color:#98a8bd;max-width:300px;line-height:1.6}.builder-save-controls>.button{font-size:12px}
+@media(max-width:720px){
+  .dialog[open]:has(>.builder-checklist),.dialog[open]:has(>.builder-levelup-body){height:calc(100dvh - 28px)}
+  .builder-checklist{padding:10px 16px}.builder-checklist>div{align-items:flex-start;flex-direction:column;gap:3px}.builder-checklist strong{font-size:11px}.builder-checklist>div>small{font-size:9px}.builder-checklist ol{max-height:78px;margin:7px 0}.builder-checklist li button{padding:5px 6px;gap:6px}.builder-checklist li button>b{font-size:10px}.builder-checklist li button>small{font-size:8px}.builder-capability-help{font-size:9px}
+  .builder-feedback{padding:9px 16px;font-size:11px;max-height:82px}.builder-footer{padding:10px 16px;gap:8px}.builder-step-navigation>.button{padding:7px 10px;font-size:10px}.builder-save-controls{flex-wrap:wrap;gap:8px}.builder-save-controls>p{flex-basis:100%;max-width:none;font-size:9px}.builder-save-controls>.button{font-size:11px;padding:9px 12px}.builder-capability{font-size:7px;padding:2px 4px}
+}
