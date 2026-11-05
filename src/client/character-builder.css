@@ -24,4 +24,5 @@
   .dialog[open]:has(>.builder-checklist),.dialog[open]:has(>.builder-levelup-body){height:calc(100dvh - 28px)}
   .builder-checklist{padding:10px 16px}.builder-checklist>div{align-items:flex-start;flex-direction:column;gap:3px}.builder-checklist strong{font-size:11px}.builder-checklist>div>small{font-size:9px}.builder-checklist ol{max-height:78px;margin:7px 0}.builder-checklist li button{padding:5px 6px;gap:6px}.builder-checklist li button>b{font-size:10px}.builder-checklist li button>small{font-size:8px}.builder-capability-help{font-size:9px}
   .builder-feedback{padding:9px 16px;font-size:11px;max-height:82px}.builder-footer{padding:10px 16px;gap:8px}.builder-step-navigation>.button{padding:7px 10px;font-size:10px}.builder-save-controls{flex-wrap:wrap;gap:8px}.builder-save-controls>p{flex-basis:100%;max-width:none;font-size:9px}.builder-save-controls>.button{font-size:11px;padding:9px 12px}.builder-capability{font-size:7px;padding:2px 4px}
+  .builder-fields .class-row>.field:nth-of-type(2){flex:0 0 66px;min-width:66px;max-width:66px}
 }
