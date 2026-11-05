@@ -53,3 +53,36 @@ for(const mode of ['missing-ack','server-error']as const)test(`a committed comma
  const f=await fixture(t),count=f.count();await f.page.route('**/api/command',async route=>{const actual=await route.fetch({timeout:15000});assert.equal(actual.status(),200);await route.fulfill(mode==='missing-ack'?{status:200,json:{ok:true}}:{status:500,json:{error:'ACK unavailable',code:'server_error'}});},{times:1});
  assert.equal(await command(f.page,'actor.create',undefined,{name:'Exactly once',draft:true}),false);const row=(await pending(f.page))[0];assert.equal(row.status,'queued');assert.equal(row.outcomeUnknown,true);assert.equal(f.count(),count+1);assert.equal(await retry(f.page,row.command.operationId,true),true);assert.equal(f.count(),count+1);assert.equal((await pending(f.page)).length,0);assert.equal((await snapshot(f.page)).state.actors.filter(a=>a.name==='Exactly once').length,1);
 });
+
+test('a lost committed ACK remains uncertain through real 403, 400 and expired-session 401 responses',async t=>{
+ const f=await fixture(t),count=f.count(),recoveryCode=await f.page.evaluate(()=>(window as unknown as ProbeWindow).probe.recoveryCode),attempts:string[]=[];
+ await f.page.route('**/api/command',async route=>{attempts.push(JSON.parse(route.request().postData()!).operationId);const actual=await route.fetch();assert.equal(actual.status(),200);await route.abort('connectionreset');},{times:1});
+ assert.equal(await command(f.page,'actor.create',undefined,{name:'Lost ACK once',draft:true}),false);const original=(await pending(f.page))[0];assert.equal(original.outcomeUnknown,true);assert.equal(f.count(),count+1);
+ for(const status of [403,400]){
+  await f.page.route('**/api/command',async route=>{attempts.push(JSON.parse(route.request().postData()!).operationId);const actual=await route.fetch(status===403?{headers:{...route.request().headers(),'x-jige-request':'0'}}:{postData:'{invalid JSON'});assert.equal(actual.status(),status);await route.fulfill({response:actual});},{times:1});
+  assert.equal(await retry(f.page,original.command.operationId,true),false);const row=(await pending(f.page))[0];assert.equal(row.command.operationId,original.command.operationId);assert.equal(row.status,'queued');assert.equal(row.outcomeUnknown,true);assert.match(row.error!,/结果尚未确认/);assert.equal(f.count(),count+1);
+ }
+ assert.equal(await f.page.evaluate(async()=>{const response=await fetch('/api/logout',{method:'POST',headers:{'Content-Type':'application/json','X-Jige-Request':'1'},body:'{}'});return response.status;}),200);
+ await f.page.route('**/api/command',async route=>{attempts.push(JSON.parse(route.request().postData()!).operationId);const actual=await route.fetch();assert.equal(actual.status(),401);await route.fulfill({response:actual});},{times:1});
+ assert.equal(await retry(f.page,original.command.operationId,true),false);assert.equal((await pending(f.page))[0].outcomeUnknown,true);assert.equal(f.count(),count+1);
+ assert.equal(await f.page.evaluate(code=>(window as unknown as ProbeWindow).probe.authenticate('recover',{recoveryCode:code}),recoveryCode),true);
+ await f.page.route('**/api/command',async route=>{attempts.push(JSON.parse(route.request().postData()!).operationId);const actual=await route.fetch();assert.equal(actual.status(),200);assert.equal((await actual.json()).duplicate,true);await route.fulfill({response:actual});},{times:1});
+ assert.equal(await retry(f.page,original.command.operationId,true),true);assert.deepEqual(attempts,Array(5).fill(original.command.operationId));assert.equal(f.count(),count+1);assert.equal((await pending(f.page)).length,0);assert.equal((await snapshot(f.page)).state.actors.filter(a=>a.name==='Lost ACK once').length,1);
+});
+
+for(const committed of [true,false])test(`a persisted legacy rejected row recovers conservatively when its original command ${committed?'committed':'was rejected'}`,async t=>{
+ const f=await fixture(t);if(!committed)await command(f.page,'actor.create',undefined,{name:'Legacy draft',draft:true});const before=await snapshot(f.page),count=f.count(),original={operationId:randomUUID(),expectedRev:before.state.rev,type:committed?'actor.create':'actor.update',...(committed?{}:{actorId:before.state.actors[0].id}),payload:committed?{name:'Legacy committed',draft:true}:{patch:{hp:{current:999}}},targetIds:[]};
+ assert.equal(await f.page.evaluate(async input=>{const response=await fetch('/api/command',{method:'POST',headers:{'Content-Type':'application/json','X-Jige-Request':'1'},body:JSON.stringify(input)});return response.status;},original),committed?200:400);
+ await f.page.evaluate(input=>{const s=(window as unknown as ProbeWindow).probe.snapshot!;localStorage.setItem(`jigerpg_v1_pending:${s.session.campaignId}:${s.session.member.id}`,JSON.stringify([{command:input,label:'Old saved request',status:'rejected',error:'Old client did not distinguish ACK failures'}]));},original);
+ await f.page.reload();await expect.poll(async()=>(await pending(f.page))[0]?.outcomeUnknown).toBe(true);const restored=(await pending(f.page))[0];assert.equal(restored.command.operationId,original.operationId);assert.equal(restored.status,'queued');assert.match(restored.error!,/结果需核验/);
+ assert.equal(await retry(f.page,original.operationId,true),committed);assert.equal(f.count(),count+Number(committed));
+ if(committed){assert.equal((await pending(f.page)).length,0);assert.equal((await snapshot(f.page)).state.actors.filter(a=>a.name==='Legacy committed').length,1);}
+ else{assert.equal((await pending(f.page))[0].command.operationId,original.operationId);assert.equal((await pending(f.page))[0].outcomeUnknown,true);await f.page.evaluate(id=>(window as unknown as ProbeWindow).probe.discard(id),original.operationId);assert.equal(await command(f.page,'actor.update',before.state.actors[0].id,{patch:{name:'Legacy corrected'}}),true);assert.equal((await snapshot(f.page)).state.actors[0].name,'Legacy corrected');}
+});
+
+test('an in-flight request cannot be rebased, discarded or replaced before its acknowledgement',async t=>{
+ const f=await fixture(t),count=f.count();let release!:()=>void;const gate=new Promise<void>(resolve=>{release=resolve;});t.after(()=>release());await f.page.route('**/api/command',async route=>{await gate;await route.continue();},{times:1});
+ const active=command(f.page,'actor.create',undefined,{name:'In flight once',draft:true});await expect.poll(async()=>(await pending(f.page))[0]?.status).toBe('sending');const original=(await pending(f.page))[0];
+ try{assert.equal(await retry(f.page,original.command.operationId,true),false);assert.equal(await command(f.page,'actor.create',undefined,{name:'Blocked second',draft:true}),false);await f.page.evaluate(id=>(window as unknown as ProbeWindow).probe.discard(id),original.command.operationId);assert.equal((await pending(f.page))[0].command.operationId,original.command.operationId);}finally{release();}
+ assert.equal(await active,true);assert.equal((await pending(f.page)).length,0);assert.equal(f.count(),count+1);assert.deepEqual((await snapshot(f.page)).state.actors.map(a=>a.name),['In flight once']);
+});
