@@ -18,7 +18,12 @@ export async function api<T>(path: string, body?: unknown, headers: Record<strin
   }
   return data as T;
 }
-export interface PendingCommand { command: Command; label: string; status: 'queued' | 'sending' | 'conflict' | 'rejected'; error?: string }
+export interface PendingCommand { command: Command; label: string; status: 'queued' | 'sending' | 'conflict' | 'rejected'; error?: string; outcomeUnknown?: boolean }
+
+function definiteRejection(reason: unknown): reason is ApiError {
+  return reason instanceof ApiError && [400, 401, 403, 404, 405, 413, 415, 422].includes(reason.status)
+    && typeof reason.body?.code === 'string' && reason.body.code.length > 0 && typeof reason.body.error === 'string';
+}
 type Connection = 'connecting' | 'online' | 'offline';
 export function useGame() {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
@@ -57,19 +62,27 @@ export function useGame() {
     });
     return () => { disposed = true; };
   }, [refresh]);
-  useEffect(() => {
-    if (!snapshot) { setPending([]); return; }
-    const key = queueKey(snapshot.session.campaignId, snapshot.session.member.id);
-    try {
-      const saved = JSON.parse(localStorage.getItem(key) || '[]');
-      if (Array.isArray(saved)) setPending(saved.filter(row => row?.command?.operationId).map(row => ({ ...row, status: row.status === 'sending' ? 'queued' : row.status })));
-    } catch { setPending([]); }
-  }, [snapshot?.session.campaignId, snapshot?.session.member.id]);
   const writePending = useCallback((rows: PendingCommand[]) => {
     pendingRef.current = rows; setPending(rows);
     const active = stateRef.current;
-    if (active) try { localStorage.setItem(queueKey(active.session.campaignId, active.session.member.id), JSON.stringify(rows)); } catch { setError('待提交操作无法暂存到浏览器。请保持此页面打开。'); }
+    if (active) try {
+      const key = queueKey(active.session.campaignId, active.session.member.id);
+      if (rows.length) localStorage.setItem(key, JSON.stringify(rows)); else localStorage.removeItem(key);
+    } catch { setError('待提交操作无法暂存到浏览器。请保持此页面打开。'); }
   }, []);
+  useEffect(() => {
+    if (!snapshot) { writePending([]); return; }
+    const key = queueKey(snapshot.session.campaignId, snapshot.session.member.id);
+    try {
+      const saved = JSON.parse(localStorage.getItem(key) || '[]');
+      const rows: PendingCommand[] = Array.isArray(saved) ? saved.filter(row => typeof row?.command?.operationId === 'string').map(row => ({
+        ...row, status: row.status === 'conflict' && !row.outcomeUnknown ? 'conflict' : 'queued',
+        outcomeUnknown: row.status === 'conflict' ? Boolean(row.outcomeUnknown) : true,
+        ...(row.status === 'rejected' ? { error: '上次操作的结果需核验。请按原操作编号安全重试；不能直接作为新操作重提。' } : {}),
+      })) : [];
+      writePending(rows);
+    } catch { pendingRef.current = []; setPending([]); }
+  }, [snapshot?.session.campaignId, snapshot?.session.member.id, writePending]);
   useEffect(() => {
     if (!snapshot) return;
     let disposed = false, socket: WebSocket | null = null, timer: ReturnType<typeof setTimeout> | undefined;
@@ -101,44 +114,52 @@ export function useGame() {
     return () => { disposed = true; clearTimeout(timer); socket?.close(); window.removeEventListener('online', onOnline); window.removeEventListener('offline', onOffline); };
   }, [snapshot?.session.campaignId, snapshot?.session.member.id, acceptSnapshot, refresh]);
   const sendPending = useCallback(async (item: PendingCommand) => {
-    if (accepting.current) return;
+    if (accepting.current || !stateRef.current) return false;
+    const session = stateRef.current.session;
+    const sameSession = () => stateRef.current?.session.campaignId === session.campaignId && stateRef.current.session.member.id === session.member.id;
     accepting.current = true;
     writePending(pendingRef.current.map(row => row.command.operationId === item.command.operationId ? { ...row, status: 'sending', error: undefined } : row));
     try {
       const result = await api<{ snapshot: Snapshot }>('/api/command', item.command);
+      if (!sameSession()) return false;
+      if (result?.snapshot?.state?.id !== session.campaignId || result.snapshot?.session?.campaignId !== session.campaignId || result.snapshot.session.member?.id !== session.member.id || !Number.isSafeInteger(result.snapshot.state.rev) || result.snapshot.state.rev <= item.command.expectedRev) throw new Error('服务器确认内容不完整；请保留原操作编号安全重试。');
       acceptSnapshot(result.snapshot);
       setError('');
       writePending(pendingRef.current.filter(row => row.command.operationId !== item.command.operationId));
       return true;
     } catch (reason) {
+      if (!sameSession()) return false;
       if (reason instanceof ApiError) {
         if (reason.body.snapshot) acceptSnapshot(reason.body.snapshot);
-        const conflict = reason.status === 409 && reason.body.code === 'stale_revision';
-        writePending(pendingRef.current.map(row => row.command.operationId === item.command.operationId ? { ...row, status: conflict ? 'conflict' : 'rejected', error: reason.message } : row));
+        const conflict = reason.status === 409 && reason.body.code === 'stale_revision' && !item.outcomeUnknown;
+        if (definiteRejection(reason) && !item.outcomeUnknown) writePending(pendingRef.current.filter(row => row.command.operationId !== item.command.operationId));
+        else writePending(pendingRef.current.map(row => row.command.operationId === item.command.operationId ? { ...row, status: conflict ? 'conflict' : 'queued', outcomeUnknown: !conflict, error: conflict ? reason.message : `操作结果尚未确认；请保留原编号安全重试。${reason.message}` } : row));
         setError(conflict ? '房间状态已改变。请检查最新状态，再决定是否重提此操作。' : reason.message);
       } else {
         setConnection('offline');
-        writePending(pendingRef.current.map(row => row.command.operationId === item.command.operationId ? { ...row, status: 'queued', error: '连接中断；恢复后可安全重试，重复请求不会再次结算。' } : row));
+        writePending(pendingRef.current.map(row => row.command.operationId === item.command.operationId ? { ...row, status: 'queued', outcomeUnknown: true, error: '服务器尚未确认结果；恢复后请用原操作编号安全重试，重复请求不会再次结算。' } : row));
+        setError(reason instanceof Error ? reason.message : '服务器尚未确认操作结果，请安全重试。');
       }
       return false;
     } finally { accepting.current = false; }
   }, [acceptSnapshot, writePending]);
   const command = useCallback(async (type: string, actorId?: string, payload: Record<string, unknown> = {}, targetIds: string[] = [], label = type) => {
     const active = stateRef.current;
-    if (!active) return false;
+    if (!active || accepting.current) return false;
     if (pendingRef.current.length) { setError('请先处理待提交的操作，再继续新的操作。'); return false; }
     const item: PendingCommand = { command: prepareCommand(type, active.state.rev, actorId, payload, targetIds), label, status: 'queued' };
     writePending([item]);
     return sendPending(item);
   }, [sendPending, writePending]);
-  const retry = useCallback((operationId: string, rebase = false) => {
+  const retry = useCallback(async (operationId: string, rebase = false) => {
+    if (accepting.current) return false;
     const row = pendingRef.current.find(item => item.command.operationId === operationId);
-    if (!row) return;
-    if (rebase && stateRef.current) {
+    if (!row) return false;
+    if (rebase && row.status === 'conflict' && !row.outcomeUnknown && stateRef.current) {
       const next = { ...row, status: 'queued' as const, command: { ...row.command, expectedRev: stateRef.current.state.rev, operationId: crypto.randomUUID() } };
       writePending(pendingRef.current.map(item => item === row ? next : item));
-      void sendPending(next);
-    } else void sendPending(row);
+      return sendPending(next);
+    } else return sendPending(row);
   }, [sendPending, writePending]);
   const authenticate = useCallback(async (mode: 'create' | 'join' | 'recover', values: Record<string, string>) => {
     setError('');
@@ -154,6 +175,6 @@ export function useGame() {
   }, [acceptSnapshot]);
   const restore = useCallback(async (backup: unknown) => { validateArchiveBody({ backup }); const result = await api<{ snapshot: Snapshot }>('/api/restore', { backup }); acceptSnapshot(result.snapshot); }, [acceptSnapshot]);
   const logout = useCallback(async () => { await api('/api/logout', {}); setSnapshot(null); setRecoveryCode(''); }, []);
-  return { snapshot, loading, connection, error, setError, entries, coverage, pending, recoveryCode, setRecoveryCode, hostToken, authenticate, command, retry, discard: (operationId: string) => writePending(pendingRef.current.filter(row => row.command.operationId !== operationId)), migrate, report, restore, logout, refresh };
+  return { snapshot, loading, connection, error, setError, entries, coverage, pending, recoveryCode, setRecoveryCode, hostToken, authenticate, command, retry, discard: (operationId: string) => { if (!accepting.current) writePending(pendingRef.current.filter(row => row.command.operationId !== operationId)); }, migrate, report, restore, logout, refresh };
 }
 export type GameClient = ReturnType<typeof useGame>;
