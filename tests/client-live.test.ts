@@ -389,7 +389,8 @@ test('actual GM and mobile player create, equip, move, attack, migrate and recov
   await expect(recovered.locator('.material-requirement')).toContainText('未记录专用材料包');
   await recovered.getByRole('textbox', { name: '问题、意图或期望效果', exact: true }).fill('如果现在走北门，未来半小时会出现怎样的征兆？');
   await recovered.getByRole('button', { name: /施放并提交裁定/ }).click();
-  await expect(recovered.locator('.pending-panel')).toContainText('缺少合规施法材料');
+  await expect(recovered.locator('.global-error')).toContainText('缺少合规施法材料');
+  await expect(recovered.locator('.pending-panel')).toHaveCount(0);
   assert.equal((await state(recovered)).state.actors.find(actor => actor.id === wizard.id)!.resources.find(resource => resource.id === 'slot-2')!.current, slotsBefore);
   await gm.getByRole('button', { name: '房间设置', exact: true }).click();
   await gm.getByText('记录已获得的施法材料', { exact: true }).click();
@@ -398,8 +399,9 @@ test('actual GM and mobile player create, equip, move, attack, migrate and recov
   await gm.getByRole('button', { name: '确认材料已获得', exact: true }).click();
   await expect.poll(async () => (await state(recovered)).state.actors.find(actor => actor.id === wizard.id)!.inventory.some(item => item.componentFor === 'spell:augury')).toBe(true);
   await expect(recovered.locator('.material-requirement')).toContainText('已记录专用材料包');
-  await recovered.getByRole('button', { name: '按最新状态重提', exact: true }).click();
+  await recovered.getByRole('button', { name: /施放并提交裁定/ }).click();
   await expect(recovered.locator('.pending-panel')).toHaveCount(0);
+  await expect(recovered.locator('.global-error')).toHaveCount(0);
   await gm.getByRole('textbox', { name: '裁定说明（可选）', exact: true }).fill('北门的道路畅通，征兆显示吉兆。');
   await gm.getByRole('button', { name: '记录裁定并完成', exact: true }).click();
   await expect.poll(async () => (await state(recovered)).state.events.some(event => event.type === 'gm-ruling' && event.message.includes('北门的道路畅通'))).toBe(true);
