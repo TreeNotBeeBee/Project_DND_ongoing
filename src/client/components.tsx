@@ -4,7 +4,7 @@ import { AUTOMATION, CATEGORY_LABELS } from './client-utils';
 import { zhName } from './labels';
 import './modal-feedback.css';
 
-export const ModalFeedbackContext = createContext<((onAcknowledged?: (command: Command) => void) => ReactNode) | null>(null);
+export const ModalFeedbackContext = createContext<((onAcknowledged?: (command: Command) => void, suppressError?: boolean) => ReactNode) | null>(null);
 
 export function Icon({ name, size = 20 }: { name: string; size?: number }) {
   const paths: Record<string, ReactNode> = {
@@ -24,10 +24,10 @@ export function Icon({ name, size = 20 }: { name: string; size?: number }) {
   };
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name] || paths.dice}</svg>;
 }
-export function Modal({ title, eyebrow, children, onClose, wide = false, error = '', onCommandSuccess }: { title: string; eyebrow?: string; children: ReactNode; onClose: () => void; wide?: boolean; error?: string; onCommandSuccess?: (command: Command) => void }) {
+export function Modal({ title, eyebrow, children, onClose, wide = false, error = '', inlineErrors = false, onCommandSuccess }: { title: string; eyebrow?: string; children: ReactNode; onClose: () => void; wide?: boolean; error?: string; inlineErrors?: boolean; onCommandSuccess?: (command: Command) => void }) {
   const ref = useRef<HTMLDialogElement>(null); const titleId = useId();
   const renderFeedback = useContext(ModalFeedbackContext);
-  const feedback = renderFeedback?.(onCommandSuccess);
+  const feedback = renderFeedback?.(onCommandSuccess, inlineErrors || Boolean(error));
   useEffect(() => { const element = ref.current!; element.showModal(); return () => { if (element.open) element.close(); }; }, []);
   return <dialog ref={ref} className={`dialog ${wide ? 'dialog-wide' : ''}`} aria-labelledby={titleId} onCancel={event => { event.preventDefault(); onClose(); }} onClick={event => { if (event.target === event.currentTarget) { const box = event.currentTarget.getBoundingClientRect(); if (event.clientX < box.left || event.clientY < box.top || event.clientX > box.right || event.clientY > box.bottom) onClose(); } }}><header className="dialog-header"><div>{eyebrow && <p className="eyebrow">{eyebrow}</p>}<h2 id={titleId}>{title}</h2>{error && <p className="modal-error" role="alert">{error}</p>}{feedback && <div className="modal-command-feedback">{feedback}</div>}</div><button className="icon-button" aria-label="关闭弹窗" onClick={onClose}><Icon name="close" /></button></header>{children}</dialog>;
 }

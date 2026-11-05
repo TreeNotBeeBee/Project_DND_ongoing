@@ -129,3 +129,54 @@ test('a real revision conflict can be reviewed inside the open mobile dialog wit
     assert.equal(retried.rev, 4); assert.equal(retried.scene.width, 21);
   } finally { await context.close(); }
 });
+
+test('character-sheet and builder rejections stay inside the modal and a corrected card can be saved', { timeout: 90_000 }, async () => {
+  const context = await browser.newContext(); context.setDefaultTimeout(15_000);
+  try {
+    const headers = { Origin: base, 'X-Jige-Request': '1' };
+    assert.equal((await context.request.post(`${base}/api/campaigns`, { headers, data: { hostToken: 'scene-ui-test-only', name: '角色卡提示验收', gmName: '测试主持人' } })).status(), 201);
+    const state = async () => (await (await context.request.get(`${base}/api/state`)).json()).state;
+    const command = async (type: string, payload: object, actorId?: string) => {
+      const result = await context.request.post(`${base}/api/command`, { headers, data: { operationId: randomUUID(), expectedRev: (await state()).rev, type, payload, actorId } });
+      assert.equal(result.status(), 200);
+    };
+    await command('actor.create', { monsterId: 'wolf', name: '背包验收' });
+    const actorId = (await state()).actors[0].id;
+    await command('inventory.add', { contentId: 'equipment:longsword', quantity: 1 }, actorId);
+    const page = await context.newPage(); await page.goto(base);
+    await page.getByRole('button', { name: '打开完整角色卡', exact: true }).click();
+    await page.getByRole('button', { name: '背包与装备', exact: true }).click();
+    await page.route('**/api/command', route => route.fulfill({ status: 400, json: { error: '测试：这件物品暂不能穿戴', code: 'rules' } }), { times: 1 });
+    const dialog = page.getByRole('dialog');
+    await dialog.locator('.inventory-row').getByRole('button', { name: '穿戴', exact: true }).click();
+    await expect(dialog.getByRole('alert')).toContainText('这件物品暂不能穿戴');
+    await expect(dialog.locator('.pending-panel')).toHaveCount(0);
+    await dialog.evaluate(element => { element.scrollTop = element.scrollHeight; });
+    const alert = await dialog.getByRole('alert').boundingBox(), bounds = await dialog.boundingBox();
+    assert.ok(alert && bounds && alert.y >= bounds.y && alert.y + alert.height <= bounds.y + bounds.height);
+    assert.equal((await state()).actors[0].inventory[0].equipped, false);
+    await dialog.getByRole('button', { name: '关闭弹窗', exact: true }).click();
+    await page.getByRole('button', { name: '创建角色', exact: true }).click();
+    await dialog.getByLabel('角色名称', { exact: true }).fill('新旅者');
+    await dialog.getByLabel('物种', { exact: true }).selectOption('species:dwarf');
+    await dialog.getByLabel('背景', { exact: true }).selectOption('background:soldier');
+    await dialog.getByLabel('初始职业', { exact: true }).selectOption('class:fighter');
+    await dialog.getByRole('tab', { name: /属性与熟练/ }).click();
+    await dialog.getByLabel('力量背景提升', { exact: true }).selectOption('2');
+    await dialog.getByLabel('体质背景提升', { exact: true }).selectOption('1');
+    await dialog.getByRole('checkbox', { name: '察觉', exact: true }).check();
+    await dialog.getByRole('checkbox', { name: '求生', exact: true }).check();
+    await page.route('**/api/command', route => route.fulfill({ status: 400, json: { error: '测试：角色暂不能保存', code: 'rules' } }), { times: 1 });
+    await dialog.getByRole('button', { name: '创建角色', exact: true }).click();
+    await expect(dialog.getByRole('alert')).toContainText('角色暂不能保存');
+    await expect(dialog.locator('.pending-panel')).toHaveCount(0);
+    assert.equal((await state()).actors.length, 1);
+    await dialog.getByRole('tab', { name: /身份与职业/ }).click();
+    await dialog.getByLabel('角色名称', { exact: true }).fill('重新提交的旅者');
+    await dialog.getByRole('button', { name: '创建角色', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    const saved = await state();
+    assert.equal(saved.actors.length, 2);
+    assert.ok(saved.actors.some((actor: { name: string }) => actor.name === '重新提交的旅者'));
+  } finally { await context.close(); }
+});
