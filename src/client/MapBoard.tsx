@@ -25,6 +25,7 @@ export function MapBoard(props: Props) {
   const [hover, setHover] = useState<Position | null>(null);
   const [renderer, setRenderer] = useState<any>(null);
   const [renderError, setRenderError] = useState(false);
+  const [backgroundFailure, setBackgroundFailure] = useState<string>();
   const [terrainType, setTerrainType] = useState<'difficult' | 'half-cover' | 'three-quarter-cover'>('difficult');
   const [hint, setHint] = useState('选择一名角色，点击空地规划移动。');
   const pointer = useRef<{ x: number; y: number; camX: number; camY: number; moved: boolean; pan: boolean; actor?: Actor; anchorOffset?: Position } | null>(null);
@@ -52,6 +53,9 @@ export function MapBoard(props: Props) {
     void import('pixi.js').then(async PIXI => {
       // Pixi's CSP polyfill replaces generated shader/uniform functions without eval.
       await import('pixi.js/unsafe-eval');
+      // Use HTMLImageElement under img-src. Workers and fetch(data:) are intentionally
+      // disallowed by production CSP; disabling only workers still takes the fetch path.
+      PIXI.Assets.setPreferences({ preferWorkers: false, preferCreateImageBitmap: false });
       application = new PIXI.Application();
       await application.init({ background: '#141922', antialias: true, resolution: Math.min(devicePixelRatio || 1, 2), autoDensity: true, width: Math.max(1, host.current?.clientWidth || 800), height: Math.max(1, host.current?.clientHeight || 600), preference: 'webgl', preserveDrawingBuffer: true, autoStart: false });
       if (disposed) { application.destroy(true, { children: true }); return; }
@@ -80,10 +84,11 @@ export function MapBoard(props: Props) {
     board.addChild(floor);
     let disposed = false;
     if (props.scene.background && /^(https?:|data:image\/)/i.test(props.scene.background)) {
-      void PIXI.Assets.load(props.scene.background).then((texture: any) => {
+      void PIXI.Assets.load({ src: props.scene.background, parser: 'texture' }).then((texture: any) => {
         if (disposed || board.destroyed) return;
+        setBackgroundFailure(undefined);
         const background = new PIXI.Sprite(texture); background.width = props.scene.width * CELL; background.height = props.scene.height * CELL; background.alpha = .8; board.addChildAt(background, 1); app.render();
-      }).catch(() => setHint('背景图片加载失败；地图和棋子仍可使用。'));
+      }).catch(() => { if (!disposed && !board.destroyed) setBackgroundFailure(props.scene.background); });
     }
     const grid = new PIXI.Graphics();
     for (let x = 0; x <= props.scene.width; x++) grid.moveTo(x * CELL, 0).lineTo(x * CELL, props.scene.height * CELL);
@@ -234,6 +239,7 @@ export function MapBoard(props: Props) {
       <div className="map-coordinates">{hover ? `${hover.x + 1} : ${hover.y + 1}` : 'TACTICAL VIEW'}<span>{props.scene.gridFeet} 尺 / 格</span></div>
       <div className="map-zoom"><button aria-label="缩小地图" onClick={() => setCamera(previous => ({ ...previous, zoom: Math.max(.25, previous.zoom / 1.2) }))}>−</button><button onClick={fit} title="适应画布">{Math.round(camera.zoom * 100)}%</button><button aria-label="放大地图" onClick={() => setCamera(previous => ({ ...previous, zoom: Math.min(3, previous.zoom * 1.2) }))}>＋</button></div>
     </div>
-    <div className="map-status"><span className="status-dot" />{hint}<span className="map-renderer">{renderError ? '兼容渲染' : 'PixiJS'} · {props.scene.width} × {props.scene.height}</span></div>
+    <div className="map-status"><span className="status-dot" />{hint}{backgroundFailure && backgroundFailure === props.scene.background && <span role="alert">背景图片加载失败；请检查图片地址与跨域权限，或重新上传本地图片。地图和棋子仍可使用。</span>}<span className="map-renderer">{renderError ? '兼容渲染' : 'PixiJS'} · {props.scene.width} × {props.scene.height}</span></div>
   </div>;
 }
+
