@@ -62,3 +62,31 @@ for (const mobile of [false, true]) test(`scene image feedback and server errors
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
   } finally { await context.close(); }
 });
+
+test('separate GM and player sessions show their identity, creation access and different scene permissions', { timeout: 60_000 }, async () => {
+  const gm = await browser.newContext(), player = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true });
+  gm.setDefaultTimeout(15_000); player.setDefaultTimeout(15_000);
+  try {
+    const created = await gm.request.post(`${base}/api/campaigns`, { headers: { Origin: base, 'X-Jige-Request': '1' }, data: { hostToken: 'scene-ui-test-only', name: '身份验收', gmName: '测试主持人' } });
+    assert.equal(created.status(), 201);
+    const joined = await player.request.post(`${base}/api/join`, { headers: { Origin: base, 'X-Jige-Request': '1' }, data: { inviteCode: (await created.json()).inviteCode, name: '测试玩家' } });
+    assert.equal(joined.status(), 200);
+    const gmPage = await gm.newPage(), playerPage = await player.newPage();
+    await Promise.all([gmPage.goto(base), playerPage.goto(base)]);
+    await expect(gmPage.locator('.identity-badge')).toHaveText('主持人');
+    await expect(playerPage.locator('.identity-badge')).toHaveText('玩家');
+    await expect(gmPage.getByRole('button', { name: '场景设置', exact: true })).toBeVisible();
+    await expect(playerPage.getByRole('button', { name: '场景设置', exact: true })).toHaveCount(0);
+    await expect(gmPage.getByRole('button', { name: '创建角色', exact: true })).toBeVisible();
+    await expect(playerPage.getByRole('button', { name: '创建角色', exact: true })).toBeVisible();
+    await gmPage.getByRole('button', { name: '邀请伙伴', exact: true }).click();
+    await expect(gmPage.getByRole('dialog').getByText(/普通标签页会共享当前主持人身份/)).toBeVisible();
+    await gmPage.getByRole('button', { name: '关闭弹窗', exact: true }).click();
+    for (const page of [gmPage, playerPage]) {
+      await page.getByRole('button', { name: '房间设置', exact: true }).click();
+      await expect(page.getByRole('heading', { name: '你的身份与权限' })).toBeVisible();
+      await expect(page.getByText(/要同时体验玩家视角/)).toBeVisible();
+    }
+    assert.notEqual((await (await gm.request.get(`${base}/api/state`)).json()).session.member.id, (await (await player.request.get(`${base}/api/state`)).json()).session.member.id);
+  } finally { await Promise.all([gm.close(), player.close()]); }
+});

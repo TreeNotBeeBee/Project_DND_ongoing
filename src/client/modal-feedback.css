@@ -5,4 +5,5 @@
 .scene-image-preview figcaption{padding:9px 12px;color:#a4b4c8;font-size:11px;overflow-wrap:anywhere}
 .scene-image-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:15px}
 .scene-image-actions p{color:#a4b4c8;font-size:11px;margin:0}
+.campaign-title h1 .identity-badge{font-size:11px;padding:2px 7px;color:#dfc794;border-color:#6e6045}
 @media(max-width:600px){.dialog-header .modal-error{font-size:11px;padding:8px 10px}.scene-image-preview img{max-height:160px}}
