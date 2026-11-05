@@ -102,11 +102,12 @@ test('a real revision conflict can be reviewed inside the open mobile dialog wit
     await page.getByRole('button', { name: '场景设置', exact: true }).click();
     const dialog = page.getByRole('dialog');
     await dialog.getByLabel('宽度（格）', { exact: true }).fill('25');
-    await page.route('**/api/command', async route => {
+    const interleaveChange = () => page.route('**/api/command', async route => {
       const state = (await (await context.request.get(`${base}/api/state`)).json()).state;
       const changed = await context.request.post(`${base}/api/command`, { headers, data: { operationId: randomUUID(), expectedRev: state.rev, type: 'scene.update', payload: { scene: { ...state.scene, fog: !state.scene.fog } } } });
       assert.equal(changed.status(), 200); await route.continue();
     }, { times: 1 });
+    await interleaveChange();
     await dialog.getByRole('button', { name: '保存场景', exact: true }).click();
     await expect(dialog.locator('.pending-panel')).toContainText('需要复核');
     await expect(dialog.getByRole('button', { name: '按最新状态重提', exact: true })).toBeVisible();
@@ -117,5 +118,14 @@ test('a real revision conflict can be reviewed inside the open mobile dialog wit
     await expect(dialog).toHaveCount(0);
     const final = (await (await context.request.get(`${base}/api/state`)).json()).state;
     assert.equal(final.rev, 2); assert.equal(final.scene.width, 25);
+    await page.getByRole('button', { name: '场景设置', exact: true }).click();
+    await dialog.getByLabel('宽度（格）', { exact: true }).fill('21');
+    await interleaveChange();
+    await dialog.getByRole('button', { name: '保存场景', exact: true }).click();
+    await expect(dialog.locator('.pending-panel')).toContainText('需要复核');
+    await dialog.getByRole('button', { name: '按最新状态重提', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    const retried = (await (await context.request.get(`${base}/api/state`)).json()).state;
+    assert.equal(retried.rev, 4); assert.equal(retried.scene.width, 21);
   } finally { await context.close(); }
 });

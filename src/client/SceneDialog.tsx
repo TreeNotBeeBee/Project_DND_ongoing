@@ -25,7 +25,7 @@ export function SceneDialog({ scene, onClose, onSave, saveError = '' }: {
   };
   const supported = !source || /^data:image\/(?:png|jpe?g|webp|gif);base64,/i.test(source) || /^https:\/\//i.test(source);
   const previewError = !supported ? '请使用 HTTPS 图片地址，或上传 PNG、JPEG、WebP、GIF 图片。' : imageStatus === 'error' ? '图片无法加载。请检查地址、图片格式及图片站点是否允许跨域使用，或改为上传本地文件。' : '';
-  return <Modal title="布置冒险场景" eyebrow="SCENE SETTINGS" error={error || previewError || saveError} onClose={onClose}>
+  return <Modal title="布置冒险场景" eyebrow="SCENE SETTINGS" error={error || previewError || saveError} onClose={onClose} onCommandSuccess={command => { if (command.type === 'scene.update') onClose(); }}>
     <form onSubmit={async event => {
       event.preventDefault(); if (reading || error || previewError || source && imageStatus !== 'ready') return;
       setBusy(true); setError('');
