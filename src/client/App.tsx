@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import type { ActionDefinition, Actor, ChoiceRequest, ContentEntry, ItemInstance, Position, Scene } from '../shared/model';
+import type { ActionDefinition, Actor, ChoiceRequest, ContentEntry, ItemInstance, Position } from '../shared/model';
 import { ABILITIES } from '../shared/model';
 import { areaContains, resolveSpellArea } from '../shared/spell-geometry';
 import { deriveActor } from '../engine/index';
@@ -8,6 +8,7 @@ import { ABILITY_LABELS, actorColor, actorInitial, CATEGORY_LABELS, CONDITIONS, 
 import { AutomationBadge, categoryIs, contentById, Confirm, Empty, entryLabel, Field, Icon, Modal } from './components';
 import { CharacterEditor, LevelUpModal } from './CharacterEditor';
 import { MapBoard } from './MapBoard';
+import { SceneDialog } from './SceneDialog';
 import { actionRangeLabel, availableActions } from './actions';
 import { ActionOptions } from './ActionOptions';
 import { HostStatusCard, useHostStatus } from './HostStatus';
@@ -147,6 +148,7 @@ export function App() {
   const [editor, setEditor] = useState<Actor | 'new' | null>(null); const [sheetId, setSheetId] = useState(''); const [levelId, setLevelId] = useState(''); const [invite, setInvite] = useState(false); const [sceneSettings, setSceneSettings] = useState(false); const [deleteActor, setDeleteActor] = useState<Actor | null>(null);
   const snapshot = game.snapshot; const gm = snapshot?.session.member.role === 'gm'; const actors = snapshot?.state.actors || []; const selected = actors.find(actor => actor.id === selectedId); const sheet = actors.find(actor => actor.id === sheetId); const levelActor = actors.find(actor => actor.id === levelId);
   useEffect(() => { if (snapshot && !actors.some(actor => actor.id === selectedId)) setSelectedId(actors.find(actor => actor.ownerId === snapshot.session.member.id)?.id || actors[0]?.id || ''); }, [snapshot?.state.rev, snapshot?.session.member.id]);
+  useEffect(() => { if (editor || levelId || sceneSettings) game.setError(''); }, [Boolean(editor), Boolean(levelId), sceneSettings]);
   if (game.loading) return <div className="loading-screen"><Icon name="dice" size={48} /><h1>正在铺开冒险地图…</h1><p>连接本机世界与规则目录</p></div>;
   if (!snapshot) return <Gateway game={game} />;
   const combat = snapshot.state.combat; const active = actors.find(actor => actor.id === combat.order[combat.turn]); const editableIds = actors.filter(actor => isEditable(actor, snapshot.session.member) && !actor.draft).map(actor => actor.id);
@@ -168,13 +170,9 @@ export function App() {
     {levelActor && <LevelUpModal actor={levelActor} entries={game.entries} onClose={() => setLevelId('')} onSave={payload => command('actor.levelup', levelActor.id, payload, [], '角色升级')} />}
     {invite && <InviteDialog game={game} onClose={() => setInvite(false)} />}
     {game.recoveryCode && <Modal title="保存你的身份恢复码" eyebrow="KEEP YOUR SEAT" onClose={() => { if (window.confirm('请确认已经复制或保存恢复码。关闭后此处不会再次显示。')) game.setRecoveryCode(''); }}><div className="dialog-body"><p>换设备、浏览器或公网地址变化后，使用这个代码回到当前身份。请像密码一样保管。</p><textarea readOnly rows={3} className="recovery-code" value={game.recoveryCode} onFocus={event => event.target.select()} /><div className="button-row"><CopyButton text={game.recoveryCode} label="复制恢复码" className="button primary" /><button className="button ghost" onClick={() => downloadJson({ campaign: snapshot.state.name, name: snapshot.session.member.name, recoveryCode: game.recoveryCode, createdAt: new Date().toISOString() }, 'JigeRPG-身份恢复码.json')}>下载保存</button></div></div><footer className="dialog-footer"><button className="button primary" onClick={() => { if (window.confirm('确认恢复码已保存到安全位置？')) game.setRecoveryCode(''); }}>我已妥善保存</button></footer></Modal>}
-    {sceneSettings && <SceneDialog scene={snapshot.state.scene} onClose={() => setSceneSettings(false)} onSave={async scene => { if (await command('scene.update', undefined, { scene }, [], '更新场景')) setSceneSettings(false); }} />}
+    {sceneSettings && <SceneDialog scene={snapshot.state.scene} onClose={() => setSceneSettings(false)} saveError={game.error} onSave={scene => command('scene.update', undefined, { scene }, [], '更新场景')} />}
     {deleteActor && <Confirm title={`删除「${deleteActor.name}」？`} confirmText="删除角色" danger onClose={() => setDeleteActor(null)} onConfirm={async () => { const ok = await command('actor.delete', deleteActor.id, {}, [], '删除角色'); if (!ok) throw new Error('删除未生效，请查看服务器提示。'); }}><p>角色会从当前冒险移除。建议先在房间设置中导出备份。</p></Confirm>}
   </div>;
-}
-function SceneDialog({ scene, onClose, onSave }: { scene: Scene; onClose: () => void; onSave: (value: Scene) => Promise<void> }) {
-  const [draft, setDraft] = useState({ ...scene }); const [busy, setBusy] = useState(false);
-  return <Modal title="布置冒险场景" eyebrow="SCENE SETTINGS" onClose={onClose}><form onSubmit={async event => { event.preventDefault(); setBusy(true); try { await onSave(draft); } finally { setBusy(false); } }}><div className="dialog-body"><div className="form-grid"><Field label="宽度（格）"><input type="number" min="5" max="100" required value={draft.width} onChange={event => setDraft({ ...draft, width: Number(event.target.value) })} /></Field><Field label="高度（格）"><input type="number" min="5" max="100" required value={draft.height} onChange={event => setDraft({ ...draft, height: Number(event.target.value) })} /></Field><Field label="每格距离（尺）"><input type="number" min="1" max="30" required value={draft.gridFeet} readOnly /></Field><Field label="战争迷雾"><select value={draft.fog ? 'on' : 'off'} onChange={event => setDraft({ ...draft, fog: event.target.value === 'on' })}><option value="off">关闭</option><option value="on">开启（服务器按视野过滤）</option></select></Field></div><Field label="背景地图地址" hint="请使用 https 图片，或上传本地地图。"><input value={draft.background || ''} placeholder="https://…" onChange={event => setDraft({ ...draft, background: event.target.value })} /></Field><Field label="本地背景图片"><input type="file" accept="image/*" onChange={event => { const file = event.target.files?.[0]; if (!file) return; if (file.size > 4 * 1024 * 1024) { alert('背景图片请控制在 4MB 以内。'); return; } const reader = new FileReader(); reader.onload = () => setDraft(previous => ({ ...previous, background: String(reader.result) })); reader.readAsDataURL(file); }} /></Field><p className="notice">缩小场景前，请把棋子移到新边界内。墙、门和地形使用地图工具编辑。</p></div><footer className="dialog-footer"><button type="button" className="button ghost" onClick={onClose}>取消</button><button className="button primary" disabled={busy}>{busy ? '保存中…' : '保存场景'}</button></footer></form></Modal>;
 }
 function ChoiceCard({ choice, game }: { choice: ChoiceRequest; game: GameClient }) {
   const [ruling, setRuling] = useState('');
