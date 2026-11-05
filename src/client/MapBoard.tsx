@@ -4,6 +4,7 @@ import { areaContains, resolveSpellArea } from '../shared/spell-geometry';
 import { lineOfSight } from '../engine/map';
 import { tokenCells, tokenCentre, tokenSideCells } from '../engine/spatial';
 import { tokenFootprint } from '../engine/size';
+import { MapFallback } from './MapFallback';
 import { actorColor, actorInitial, pathBetween } from './client-utils';
 
 export type MapTool = 'select' | 'move' | 'target' | 'pan' | 'wall' | 'door' | 'terrain' | 'erase' | 'area';
@@ -26,14 +27,17 @@ export function MapBoard(props: Props) {
   const [renderer, setRenderer] = useState<any>(null);
   const [renderError, setRenderError] = useState(false);
   const [backgroundFailure, setBackgroundFailure] = useState<string>();
+  const [portraitFailures, setPortraitFailures] = useState<Record<string, string>>({});
+  // The server projects visibility; retain the same boundary before requesting any image.
+  const visibleActors = props.actors.filter(actor => props.gm || !actor.hidden);
   const [terrainType, setTerrainType] = useState<'difficult' | 'half-cover' | 'three-quarter-cover'>('difficult');
   const [hint, setHint] = useState('选择一名角色，点击空地规划移动。');
   const pointer = useRef<{ x: number; y: number; camX: number; camY: number; moved: boolean; pan: boolean; actor?: Actor; anchorOffset?: Position } | null>(null);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const pinch = useRef<{ distance: number; zoom: number } | null>(null);
   const latest = useRef(props); latest.current = props;
-  const actorAt = (point: Position) => props.actors.find(actor => tokenCells(actor, actor.position, props.scene.gridFeet).some(cell => cell.x === point.x && cell.y === point.y));
-  const routeFor = (actor: Actor, destination: Position) => pathBetween(actor.position, destination, props.scene, [], { actor, actors: props.actors, crawling: actor.effects.some(effect => effect.condition === 'prone') });
+  const actorAt = (point: Position) => visibleActors.find(actor => tokenCells(actor, actor.position, props.scene.gridFeet).some(cell => cell.x === point.x && cell.y === point.y));
+  const routeFor = (actor: Actor, destination: Position) => pathBetween(actor.position, destination, props.scene, [], { actor, actors: visibleActors, crawling: actor.effects.some(effect => effect.condition === 'prone') });
   const moveActor = (actor: Actor, destination: Position) => {
     if (props.disabled) return;
     const path = routeFor(actor, destination);
@@ -105,12 +109,12 @@ export function MapBoard(props: Props) {
     if (props.scene.fog && props.gm) {
       const fog = new PIXI.Graphics().rect(0, 0, props.scene.width * CELL, props.scene.height * CELL).fill({ color: '#778eaf', alpha: .055 }); board.addChild(fog);
     } else if (props.scene.fog) {
-      const observers = props.actors.filter(actor => props.editableIds.includes(actor.id) && !actor.dead && !actor.effects.some(effect => ['blinded', 'unconscious'].includes(effect.condition || '')));
+      const observers = visibleActors.filter(actor => props.editableIds.includes(actor.id) && !actor.dead && !actor.effects.some(effect => ['blinded', 'unconscious'].includes(effect.condition || '')));
       const fog = new PIXI.Graphics();
       for (let x = 0; x < props.scene.width; x++) for (let y = 0; y < props.scene.height; y++) if (!observers.some(actor => lineOfSight(props.scene, actor.position, { x, y }))) fog.rect(x * CELL, y * CELL, CELL + .5, CELL + .5).fill({ color: '#0b1019', alpha: .97 });
       board.addChild(fog);
     }
-    const selected = props.actors.find(actor => actor.id === props.selectedId);
+    const selected = visibleActors.find(actor => actor.id === props.selectedId);
     if (hover && selected && (tool === 'move' || tool === 'select') && props.editableIds.includes(selected.id)) {
       const path = routeFor(selected, hover);
       const preview = new PIXI.Graphics();
@@ -138,7 +142,7 @@ export function MapBoard(props: Props) {
       else guide.moveTo(first.x * CELL, first.y * CELL).lineTo(hover.x * CELL, hover.y * CELL).stroke({ color: '#e8cf9a', width: 4 });
       board.addChild(guide);
     }
-    for (const actor of props.actors) {
+    for (const actor of visibleActors) {
       const { x, y } = actor.position; const side = tokenSideCells(actor, props.scene.gridFeet); const centre = tokenCentre(actor, actor.position, props.scene.gridFeet);
       const radius = CELL * (side > 1 ? .43 * side : tokenFootprint(actor) < 1 ? .22 : .34);
       if (side > 1) { const footprint = new PIXI.Graphics().roundRect(x * CELL + 2, y * CELL + 2, side * CELL - 4, side * CELL - 4, 5).fill({ color: actorColor(actor.id), alpha: .06 }).stroke({ color: actor.id === props.selectedId ? '#f6e3b8' : actorColor(actor.id), alpha: actor.hidden ? .25 : .6, width: 1.5 }); board.addChild(footprint); }
@@ -147,6 +151,7 @@ export function MapBoard(props: Props) {
       glyph.circle(2, 4, radius + 2).fill({ color: '#05090f', alpha: .6 });
       if (actor.id === props.activeId) glyph.circle(0, 0, radius + 7).stroke({ color: '#d5bb84', width: 1.5, alpha: .8 });
       if (actor.id === props.selectedId) glyph.circle(0, 0, radius + 4).stroke({ color: '#f6e3b8', width: 2.5 });
+      glyph.circle(0, 0, radius + 1).stroke({ color: actorColor(actor.ownerId || actor.id), width: 3 });
       glyph.circle(0, 0, radius).fill(actor.kind === 'monster' ? '#533d43' : '#2c4142').stroke({ color, width: 2 });
       if (props.targetIds.includes(actor.id)) {
         glyph.circle(0, 0, radius + 10).stroke({ color: '#df8d8d', width: 2 });
@@ -154,6 +159,21 @@ export function MapBoard(props: Props) {
       }
       token.addChild(glyph);
       const label = new PIXI.Text({ text: actorInitial(actor), style: { fontFamily: 'Microsoft YaHei, sans-serif', fontSize: 16, fontWeight: '600', fill: color } }); label.anchor.set(.5); token.addChild(label);
+      if (actor.portrait && /^(https?:|data:image\/)/i.test(actor.portrait)) {
+        const source = actor.portrait;
+        void PIXI.Assets.load({ src: source, parser: 'texture' }).then((texture: any) => {
+          if (disposed || token.destroyed || board.destroyed) return;
+          if (!(texture.width > 0 && texture.height > 0)) throw new Error('Portrait image has no drawable pixels');
+          const face = new PIXI.Container(), image = new PIXI.Sprite(texture);
+          const innerRadius = Math.max(1, radius - 2);
+          image.anchor.set(.5); image.scale.set(Math.max(innerRadius * 2 / texture.width, innerRadius * 2 / texture.height));
+          const mask = new PIXI.Graphics().circle(0, 0, innerRadius).fill('#ffffff');
+          face.addChild(image, mask); image.mask = mask;
+          // Portrait stays inside the identity/ownership rings; captions and HP stay on top.
+          token.addChildAt(face, 1); label.visible = false; app.render();
+          setPortraitFailures(previous => { if (!(actor.id in previous)) return previous; const next = { ...previous }; delete next[actor.id]; return next; });
+        }).catch(() => { if (!disposed && !token.destroyed && !board.destroyed) setPortraitFailures(previous => previous[actor.id] === source ? previous : { ...previous, [actor.id]: source }); });
+      }
       const name = new PIXI.Text({ text: actor.name.slice(0, 10), style: { fontFamily: 'Microsoft YaHei, sans-serif', fontSize: 10, fill: '#d6dce3', dropShadow: { color: '#000000', blur: 3, distance: 0 } } }); name.anchor.set(.5, 0); name.y = radius + 7; token.addChild(name);
       const hp = new PIXI.Graphics().roundRect(-radius, radius + 21, radius * 2, 3, 1).fill('#0d131a'); hp.roundRect(-radius, radius + 21, Math.max(0, Math.min(1, actor.hp.current / Math.max(1, actor.hp.max))) * radius * 2, 3, 1).fill(actor.hp.current < actor.hp.max * .3 ? '#dd8d84' : '#92baa0'); token.addChild(hp); board.addChild(token);
     }
@@ -184,7 +204,7 @@ export function MapBoard(props: Props) {
       props.onScene({ ...props.scene, walls: props.scene.walls.filter(row => !(Math.min(row.a.x, row.b.x) - .5 <= position.x && Math.max(row.a.x, row.b.x) + .5 >= position.x && Math.min(row.a.y, row.b.y) - .5 <= position.y && Math.max(row.a.y, row.b.y) + .5 >= position.y)), terrain: props.scene.terrain.filter(row => !(position.x >= row.x && position.y >= row.y && position.x < row.x + row.width && position.y < row.y + row.height)) }); return;
     }
     if (actor && tool !== 'pan') { props.onSelect(actor.id); return; }
-    const selected = props.actors.find(row => row.id === props.selectedId);
+    const selected = visibleActors.find(row => row.id === props.selectedId);
     if (selected && props.editableIds.includes(selected.id) && (tool === 'move' || tool === 'select')) {
       moveActor(selected, position);
     }
@@ -192,10 +212,10 @@ export function MapBoard(props: Props) {
   const fit = () => { const zoom = Math.max(.25, Math.min(1.5, (size.width - 60) / (props.scene.width * CELL), (size.height - 60) / (props.scene.height * CELL))); setCamera({ x: (size.width - props.scene.width * CELL * zoom) / 2, y: (size.height - props.scene.height * CELL * zoom) / 2, zoom }); };
   useEffect(() => {
     if (size.width < 1 || size.height < 1) return;
-    const focus = props.actors.find(actor => actor.id === props.selectedId) || props.actors[0];
+    const focus = visibleActors.find(actor => actor.id === props.selectedId) || visibleActors[0];
     if (focus && !actorFocused.current) { const zoom = size.width < 600 ? .8 : 1; const centre = tokenCentre(focus, focus.position, props.scene.gridFeet); setCamera({ x: Math.min(24, size.width / 2 - (centre.x + .5) * CELL * zoom), y: Math.min(80, size.height / 2 - (centre.y + .5) * CELL * zoom), zoom }); actorFocused.current = true; cameraReady.current = true; }
     else if (!cameraReady.current) { fit(); cameraReady.current = true; }
-  }, [props.scene.width, props.scene.height, size.width, size.height, Boolean(props.actors.length)]);
+  }, [props.scene.width, props.scene.height, size.width, size.height, Boolean(visibleActors.length)]);
   return <div className="map-shell">
     <div className="map-toolbar" role="toolbar" aria-label="地图工具">
       {TOOLS.filter(([id]) => props.gm || !['wall', 'door', 'terrain', 'erase'].includes(id)).map(([id, icon, label]) => <button key={id} className={`map-tool ${tool === id ? 'active' : ''}`} title={label} aria-label={label} aria-pressed={tool === id} onClick={() => { setTool(id); setFirst(null); setHint(id === 'wall' || id === 'door' ? '依次点击网格边上的起点、终点。门工具可点击已有门切换开闭。' : id === 'terrain' ? '点击区域的两个对角格设置地形。' : id === 'target' ? '点击棋子选择或取消行动目标。' : id === 'area' ? '点击地图设置法术范围原点。' : '拖动棋子移动，或选择角色后点击空地。'); }}><span>{icon}</span><small>{label}</small></button>)}
@@ -230,16 +250,18 @@ export function MapBoard(props: Props) {
       onKeyDown={event => {
         if (event.key === 'Escape') { setFirst(null); return; }
         const direction = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] }[event.key]; if (!direction) return;
-        event.preventDefault(); const selected = props.actors.find(row => row.id === props.selectedId);
+        event.preventDefault(); const selected = visibleActors.find(row => row.id === props.selectedId);
         if (event.shiftKey) setCamera(previous => ({ ...previous, x: previous.x - direction[0] * 32, y: previous.y - direction[1] * 32 }));
         else if (selected && props.editableIds.includes(selected.id)) moveActor(selected, { x: selected.position.x + direction[0], y: selected.position.y + direction[1] });
       }}>
-      {renderError && <svg className="map-fallback" width="100%" height="100%" aria-hidden="true"><g transform={`translate(${camera.x},${camera.y}) scale(${camera.zoom})`}><defs><pattern id="fallback-grid" width={CELL} height={CELL} patternUnits="userSpaceOnUse"><rect width={CELL} height={CELL} fill="#1b222c" stroke="#303a47" strokeWidth="1" /></pattern></defs><rect width={props.scene.width * CELL} height={props.scene.height * CELL} fill="url(#fallback-grid)" />{props.scene.terrain.map(part => <rect key={part.id} x={part.x * CELL} y={part.y * CELL} width={part.width * CELL} height={part.height * CELL} fill="#a78652" opacity=".3" />)}{props.scene.walls.map(wall => <line key={wall.id} x1={wall.a.x * CELL} y1={wall.a.y * CELL} x2={wall.b.x * CELL} y2={wall.b.y * CELL} stroke={wall.door ? '#d5aa6d' : '#a5b1bb'} opacity={wall.open ? .35 : 1} strokeWidth="5" />)}{props.actors.map(actor => <g key={actor.id} transform={`translate(${(tokenCentre(actor, actor.position, props.scene.gridFeet).x + .5) * CELL},${(tokenCentre(actor, actor.position, props.scene.gridFeet).y + .5) * CELL})`}>{tokenSideCells(actor, props.scene.gridFeet) > 1 && <rect x={-tokenSideCells(actor, props.scene.gridFeet) * CELL / 2 + 2} y={-tokenSideCells(actor, props.scene.gridFeet) * CELL / 2 + 2} width={tokenSideCells(actor, props.scene.gridFeet) * CELL - 4} height={tokenSideCells(actor, props.scene.gridFeet) * CELL - 4} fill="none" stroke={actorColor(actor.id)} opacity=".6" />}<circle r={CELL * (tokenSideCells(actor, props.scene.gridFeet) > 1 ? .43 * tokenSideCells(actor, props.scene.gridFeet) : .34)} fill={actor.kind === 'monster' ? '#533d43' : '#2c4142'} stroke={actor.id === props.selectedId ? '#f6e3b8' : actorColor(actor.id)} strokeWidth="2" /><text textAnchor="middle" dy="5" fill={actorColor(actor.id)} fontSize="16">{actorInitial(actor)}</text><text textAnchor="middle" dy="32" fill="#d6dce3" fontSize="10">{actor.name}</text></g>)}</g></svg>}
-      {!props.actors.length && <div className="map-empty"><span>✧</span><h3>每段冒险，都从这里开始</h3><p>{props.gm ? '创建角色或从怪物图鉴加入遭遇。' : '创建你的第一名角色，踏入冒险。'}</p></div>}
+      {renderError && <MapFallback scene={props.scene} actors={visibleActors} selectedId={props.selectedId} activeId={props.activeId} targetIds={props.targetIds} gm={props.gm} editableIds={props.editableIds} camera={camera} onBackgroundResult={(source, loaded) => { if (latest.current.scene.background === source) setBackgroundFailure(loaded ? undefined : source); }} onPortraitResult={(id, source, loaded) => {
+        if (!latest.current.actors.some(actor => actor.id === id && actor.portrait === source && (latest.current.gm || !actor.hidden))) return;
+        setPortraitFailures(previous => { if (!loaded) return previous[id] === source ? previous : { ...previous, [id]: source }; if (!(id in previous)) return previous; const next = { ...previous }; delete next[id]; return next; });
+      }} />}
+      {!visibleActors.length && <div className="map-empty"><span>✧</span><h3>每段冒险，都从这里开始</h3><p>{props.gm ? '创建角色或从怪物图鉴加入遭遇。' : '创建你的第一名角色，踏入冒险。'}</p></div>}
       <div className="map-coordinates">{hover ? `${hover.x + 1} : ${hover.y + 1}` : 'TACTICAL VIEW'}<span>{props.scene.gridFeet} 尺 / 格</span></div>
       <div className="map-zoom"><button aria-label="缩小地图" onClick={() => setCamera(previous => ({ ...previous, zoom: Math.max(.25, previous.zoom / 1.2) }))}>−</button><button onClick={fit} title="适应画布">{Math.round(camera.zoom * 100)}%</button><button aria-label="放大地图" onClick={() => setCamera(previous => ({ ...previous, zoom: Math.min(3, previous.zoom * 1.2) }))}>＋</button></div>
     </div>
-    <div className="map-status"><span className="status-dot" />{hint}{backgroundFailure && backgroundFailure === props.scene.background && <span role="alert">背景图片加载失败；请检查图片地址与跨域权限，或重新上传本地图片。地图和棋子仍可使用。</span>}<span className="map-renderer">{renderError ? '兼容渲染' : 'PixiJS'} · {props.scene.width} × {props.scene.height}</span></div>
+    <div className="map-status"><span className="status-dot" />{hint}{visibleActors.some(actor => actor.portrait && portraitFailures[actor.id] === actor.portrait) && <span role="status">部分角色头像加载失败，已保留文字棋子。</span>}{backgroundFailure && backgroundFailure === props.scene.background && <span role="alert">背景图片加载失败；请检查图片地址与跨域权限，或重新上传本地图片。地图和棋子仍可使用。</span>}<span className="map-renderer">{renderError ? '兼容渲染' : 'PixiJS'} · {props.scene.width} × {props.scene.height}</span></div>
   </div>;
 }
-
