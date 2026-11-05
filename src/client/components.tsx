@@ -1,8 +1,10 @@
-import { Children, cloneElement, isValidElement, useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { Children, cloneElement, createContext, isValidElement, useContext, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import type { ContentEntry } from '../shared/model';
 import { AUTOMATION, CATEGORY_LABELS } from './client-utils';
 import { zhName } from './labels';
 import './modal-feedback.css';
+
+export const ModalFeedbackContext = createContext<ReactNode>(null);
 
 export function Icon({ name, size = 20 }: { name: string; size?: number }) {
   const paths: Record<string, ReactNode> = {
@@ -24,8 +26,9 @@ export function Icon({ name, size = 20 }: { name: string; size?: number }) {
 }
 export function Modal({ title, eyebrow, children, onClose, wide = false, error = '' }: { title: string; eyebrow?: string; children: ReactNode; onClose: () => void; wide?: boolean; error?: string }) {
   const ref = useRef<HTMLDialogElement>(null); const titleId = useId();
+  const feedback = useContext(ModalFeedbackContext);
   useEffect(() => { const element = ref.current!; element.showModal(); return () => { if (element.open) element.close(); }; }, []);
-  return <dialog ref={ref} className={`dialog ${wide ? 'dialog-wide' : ''}`} aria-labelledby={titleId} onCancel={event => { event.preventDefault(); onClose(); }} onClick={event => { if (event.target === event.currentTarget) { const box = event.currentTarget.getBoundingClientRect(); if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) onClose(); } }}><header className="dialog-header"><div>{eyebrow && <p className="eyebrow">{eyebrow}</p>}<h2 id={titleId}>{title}</h2>{error && <p className="modal-error" role="alert">{error}</p>}</div><button className="icon-button" aria-label="关闭弹窗" onClick={onClose}><Icon name="close" /></button></header>{children}</dialog>;
+  return <dialog ref={ref} className={`dialog ${wide ? 'dialog-wide' : ''}`} aria-labelledby={titleId} onCancel={event => { event.preventDefault(); onClose(); }} onClick={event => { if (event.target === event.currentTarget) { const box = event.currentTarget.getBoundingClientRect(); if (event.clientX < box.left || event.clientY < box.top || event.clientX > box.right || event.clientY > box.bottom) onClose(); } }}><header className="dialog-header"><div>{eyebrow && <p className="eyebrow">{eyebrow}</p>}<h2 id={titleId}>{title}</h2>{error && <p className="modal-error" role="alert">{error}</p>}{feedback && <div className="modal-command-feedback">{feedback}</div>}</div><button className="icon-button" aria-label="关闭弹窗" onClick={onClose}><Icon name="close" /></button></header>{children}</dialog>;
 }
 export function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) {
   const id = useId();

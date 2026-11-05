@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve, sep } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { chromium, expect, type Browser } from '@playwright/test';
 import { createApplication } from '../src/server/app';
 
@@ -89,4 +90,32 @@ test('separate GM and player sessions show their identity, creation access and d
     }
     assert.notEqual((await (await gm.request.get(`${base}/api/state`)).json()).session.member.id, (await (await player.request.get(`${base}/api/state`)).json()).session.member.id);
   } finally { await Promise.all([gm.close(), player.close()]); }
+});
+
+test('a real revision conflict can be reviewed inside the open mobile dialog without losing the form', { timeout: 60_000 }, async () => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true });
+  context.setDefaultTimeout(15_000);
+  try {
+    const headers = { Origin: base, 'X-Jige-Request': '1' };
+    assert.equal((await context.request.post(`${base}/api/campaigns`, { headers, data: { hostToken: 'scene-ui-test-only', name: '场景冲突验收', gmName: '测试主持人' } })).status(), 201);
+    const page = await context.newPage(); await page.goto(base);
+    await page.getByRole('button', { name: '场景设置', exact: true }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByLabel('宽度（格）', { exact: true }).fill('25');
+    await page.route('**/api/command', async route => {
+      const state = (await (await context.request.get(`${base}/api/state`)).json()).state;
+      const changed = await context.request.post(`${base}/api/command`, { headers, data: { operationId: randomUUID(), expectedRev: state.rev, type: 'scene.update', payload: { scene: { ...state.scene, fog: !state.scene.fog } } } });
+      assert.equal(changed.status(), 200); await route.continue();
+    }, { times: 1 });
+    await dialog.getByRole('button', { name: '保存场景', exact: true }).click();
+    await expect(dialog.locator('.pending-panel')).toContainText('需要复核');
+    await expect(dialog.getByRole('button', { name: '按最新状态重提', exact: true })).toBeVisible();
+    await dialog.getByRole('button', { name: '放弃此操作', exact: true }).click();
+    await expect(dialog.locator('.pending-panel')).toHaveCount(0);
+    await expect(dialog.getByLabel('宽度（格）', { exact: true })).toHaveValue('25');
+    await dialog.getByRole('button', { name: '保存场景', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    const final = (await (await context.request.get(`${base}/api/state`)).json()).state;
+    assert.equal(final.rev, 2); assert.equal(final.scene.width, 25);
+  } finally { await context.close(); }
 });

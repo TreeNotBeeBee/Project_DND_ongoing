@@ -6,4 +6,8 @@
 .scene-image-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:15px}
 .scene-image-actions p{color:#a4b4c8;font-size:11px;margin:0}
 .campaign-title h1 .identity-badge{font-size:11px;padding:2px 7px;color:#dfc794;border-color:#6e6045}
+.dialog .modal-command-feedback{max-height:25dvh;overflow:auto;margin-top:10px}
+.dialog .modal-command-feedback .pending-panel{border:1px solid #635238;border-radius:7px;padding:10px}
+.dialog .modal-command-feedback .pending-panel>div{flex-wrap:wrap;gap:8px}
+.dialog .modal-command-feedback .pending-panel>div>div{flex-basis:100%}
 @media(max-width:600px){.dialog-header .modal-error{font-size:11px;padding:8px 10px}.scene-image-preview img{max-height:160px}}
