@@ -3,8 +3,10 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm, readdir, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import Database from 'better-sqlite3';
 import { createApplication } from '../src/server/app';
-import { openDatabase, SCHEMA_VERSION } from '../src/server/database';
+import { onlineBackup, openDatabase, SCHEMA_VERSION } from '../src/server/database';
 
 async function setup(t: any) {
   const dir = await mkdtemp(join(tmpdir(), 'jige-accounts-'));
@@ -94,4 +96,24 @@ test('upgrading schema 2 makes a verified schema-2 backup before adding account 
     const info = JSON.parse(await readFile(join(dir, 'backups', manifest), 'utf8'));
     assert.equal(info.schemaVersion, 2); assert.match(info.sha256, /^[a-f0-9]{64}$/); assert.ok(info.gitCommit); assert.ok(info.backupId);
   } finally { await current.close(); }
+});
+
+test('a paired database backup and CLI restore retain passwords, hosting authority and cross-world identities', async t => {
+  const f = await setup(t), host = f.client();
+  await host.request('/api/account/register', { username: 'backup-owner', password: 'original-password', hostToken: 'host-local-only' });
+  const first = await host.request('/api/campaigns', { name: '保留的世界一', mode: 'gm' });
+  const second = await host.request('/api/campaigns', { name: '保留的世界二', mode: 'ai' });
+  const saved = await onlineBackup(f.runtime.db, join(f.dir, 'copies'), 'account-pair');
+  const manifest = JSON.parse(await readFile(saved + '.manifest.json', 'utf8'));
+  assert.equal(manifest.databaseGitCommit, manifest.gitCommit); assert.equal(manifest.schemaVersion, SCHEMA_VERSION);
+  await f.runtime.close();
+  const changed = new Database(join(f.dir, 'game.sqlite'));
+  try { changed.prepare("UPDATE accounts SET password_hash='damaged',can_host=0").run(); changed.prepare('DELETE FROM account_members').run(); } finally { changed.close(); }
+  execFileSync(process.execPath, ['scripts/restore.mjs', saved], { cwd: new URL('..', import.meta.url), env: { ...process.env, JIGE_DATA_DIR: f.dir }, windowsHide: true, stdio: 'pipe' });
+  await f.restart();
+  const fresh = f.client(); const login = await fresh.request('/api/account/login', { username: 'backup-owner', password: 'original-password' });
+  assert.equal(login.status, 200); assert.equal(login.data.account.canCreateWorld, true);
+  assert.equal((await fresh.request('/api/worlds')).data.worlds.length, 2);
+  assert.equal((await fresh.request('/api/worlds/enter', { worldId: first.data.state.id })).data.session.member.id, first.data.session.member.id);
+  assert.equal((await fresh.request('/api/worlds/enter', { worldId: second.data.state.id })).data.session.member.id, second.data.session.member.id);
 });
