@@ -50,6 +50,22 @@ async function captureScreenshots(f: Awaited<ReturnType<typeof fixture>>) {
   await f.owner.getByRole('button', { name: '返回主菜单', exact: true }).click(); await expect(f.owner.getByRole('navigation', { name: '主菜单' })).toBeVisible(); await f.owner.setViewportSize({ width: 1440, height: 960 }); await f.owner.screenshot({ path: join(output, 'account-home.png'), animations: 'disabled' });
 }
 
+test('the player can read opening fields and public world facts even when AI supplies no narrative rows', { timeout: 45000 }, async t => {
+  const f = await fixture(t), exported = await f.post(f.owner, '/api/ai/export', { kind: 'initialize' });
+  const module = initialization(); module.opening.narratives = [];
+  Object.assign(module.opening.fields, { situation: field('此段处境只存在于开幕字段。') });
+  await f.command(f.owner, 'ai.display.initialize', { packet: { ...exported.template, payload: { decisionId: 'opening-fields-only', initialization: module } } });
+  await f.command(f.owner, 'world.start', {}); await f.command(f.player, 'ai.display.select', { actorId: 'mist' });
+  await expect(f.player.getByRole('region', { name: 'AI世界地图' })).toBeVisible();
+  await f.player.locator('.ai-story-feed>summary').click();
+  const facts = f.player.getByRole('region', { name: '开幕与世界资料' });
+  await expect(facts).toContainText('此段处境只存在于开幕字段。');
+  await facts.getByText('世界背景与模组规则', { exact: true }).click();
+  await expect(facts).toContainText('群岛上的来信'); await expect(facts).toContainText('雾港');
+  const text = await f.player.locator('body').innerText();
+  for (const secret of ['GM_RULE_SECRET', 'GM_PC_SECRET', 'GM_BACKGROUND_SECRET', 'GM_HIDDEN_ENEMY']) assert.equal(text.includes(secret), false);
+});
+
 test('real AI wizard persists incomplete source, previews five groups and gives the player a private map without native rules', { timeout: 90000 }, async t => {
   const f = await fixture(t), { owner, player } = f;
   await expect(owner.getByRole('heading', { name: '初始化这场冒险' })).toBeVisible(); assert.equal(await owner.getByRole('navigation', { name: 'AI房主导航' }).getByRole('button').count(), 3);
