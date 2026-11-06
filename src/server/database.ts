@@ -8,7 +8,7 @@ import { execFileSync } from 'node:child_process';
 import { newWorld } from '../shared/world';
 
 export const SCHEMA_VERSION = 3;
-export const CODE_VERSION = '2.0.0-beta.1';
+export const CODE_VERSION = '2.0.0-beta.2';
 export type GameDatabase = Database.Database;
 
 export function codeCommit() {

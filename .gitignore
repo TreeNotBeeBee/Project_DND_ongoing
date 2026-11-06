@@ -1,6 +1,7 @@
 **/node_modules/
 .tools/
 work/
+/origin/
 **/dist/
 **/coverage/
 **/test-results/
