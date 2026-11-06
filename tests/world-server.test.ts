@@ -163,7 +163,7 @@ test('real AI room completes rounds with the selected dice source and preserves 
     const preview=await f.owner.api('/api/ai/preview',{packet:reply});assert.equal(preview.body.valid,true,JSON.stringify(preview.body));
     await f.owner.command('ai.apply',{packet:reply});const once=await f.owner.state();assert.equal(once.world!.round.phase,'intermission');
     const hero=once.state.actors.find(a=>a.id===actorId)!;assert.deepEqual(hero.position,destination);assert.equal(hero.resources.find(r=>r.id==='ap')!.current,diceSource==='program'?9.5:9);
-    assert.equal(once.world!.ai.exchanges.find(e=>e.id===first.exchangeId)!.rolls!.find(r=>r.id==='chance-result')!.total,diceSource==='program'?1:3);
+    assert.equal(once.world!.ai.exchanges!.find(e=>e.id===first.exchangeId)!.rolls!.find(r=>r.id==='chance-result')!.total,diceSource==='program'?1:3);
     await f.restart();await f.owner.command('ai.apply',{packet:reply});const repeated=await f.owner.state();assert.equal(repeated.world!.gameplayRev,once.world!.gameplayRev);assert.equal(repeated.state.actors.find(a=>a.id===actorId)!.resources.find(r=>r.id==='ap')!.current,hero.resources.find(r=>r.id==='ap')!.current);
     await f.owner.command('round.start');
   }

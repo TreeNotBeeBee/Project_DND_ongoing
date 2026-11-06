@@ -21,6 +21,7 @@ const checkout=join(proofRoot,'checkout'),dataDir=join(proofRoot,'data');
 await mkdir(proofRoot,{recursive:true});
 execFileSync('git',['-C',repository,'worktree','add','--detach',checkout,checkpoint],{windowsHide:true,stdio:['ignore','pipe','pipe']});
 const checkpointRoot=checkpointProject(checkout);
+const modern=existsSync(join(checkpointRoot,'src/shared/world.ts'));
 await symlink(join(project,'node_modules'),join(checkpointRoot,'node_modules'),'junction');
 const child=join(proofRoot,'seed.mjs');
 await writeFile(child,`
@@ -32,10 +33,10 @@ const runtime=await createApplication({dataDir:${JSON.stringify(dataDir)},hostTo
 try{
  const address=await runtime.listen(0);const origin='http://localhost:'+address.port;
  const headers={Origin:origin,'Content-Type':'application/json','X-Jige-Request':'1'};
- const response=await fetch(origin+'/api/campaigns',{method:'POST',headers,body:JSON.stringify({name:'Checkpoint campaign',gmName:'QA GM',hostToken:'rollback-test-only'})});
+ const response=await fetch(origin+'/api/campaigns',{method:'POST',headers,body:JSON.stringify({name:'Checkpoint campaign',gmName:'QA GM',hostToken:'rollback-test-only',...${JSON.stringify(modern?{mode:'co-create',governance:{system:'democracy',ownerVeto:true}}:{})}})});
  if(response.status!==201)throw new Error(await response.text());
  const snapshot=await response.json();const cookie=response.headers.get('set-cookie').split(';')[0];
- const added=await fetch(origin+'/api/command',{method:'POST',headers:{...headers,Cookie:cookie},body:JSON.stringify({operationId:'rollback-proof-create',expectedRev:snapshot.state.rev,type:'actor.create',payload:{name:'Checkpoint actor',draft:true}})});
+ const added=await fetch(origin+'/api/command',{method:'POST',headers:{...headers,Cookie:cookie},body:JSON.stringify({operationId:'rollback-proof-create',expectedRev:snapshot.state.rev,type:${JSON.stringify(modern?'character.create':'actor.create')},payload:${JSON.stringify(modern?{actor:{name:'Checkpoint actor'}}:{name:'Checkpoint actor',draft:true})}})});
  if(added.status!==200)throw new Error(await added.text());
  const committed=await added.json();const backup=await onlineBackup(runtime.db,${JSON.stringify(join(proofRoot,'backups'))},'checkpoint');
  console.log(JSON.stringify({backup,cookie,snapshot:committed.snapshot,serverId:runtime.serverId}));
@@ -57,7 +58,8 @@ try{
  const address=await restored.listen(0);const response=await fetch('http://localhost:'+address.port+'/api/state',{headers:{Cookie:seeded.cookie}});
  assert.equal(response.status,200);const snapshot=await response.json();
  assert.equal(restored.serverId,seeded.serverId);assert.deepEqual(snapshot.state,seeded.snapshot.state);
- const proof={codeCommit:checkpoint,schemaVersion:manifest.schemaVersion,backupId:manifest.backupId,backupSha256:manifest.sha256,restoredStateMatches:true,restoredSessionWorks:true,checkpointCheckout:checkout};
+ if(modern)assert.deepEqual(snapshot.world,seeded.snapshot.world);
+ const proof={codeCommit:checkpoint,schemaVersion:manifest.schemaVersion,backupId:manifest.backupId,backupSha256:manifest.sha256,restoredStateMatches:true,restoredGovernanceMatches:modern,restoredSessionWorks:true,checkpointCheckout:checkout};
  await writeFile(join(proofRoot,'result.json'),JSON.stringify(proof,null,2));console.log(JSON.stringify(proof));
 }finally{await restored.close();}
 }
