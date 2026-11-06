@@ -4,7 +4,7 @@ export const SIZE_CATEGORIES=['tiny','small','medium','large','huge','gargantuan
 export function creatureSizeRank(actor:Actor):number{
   const published=['monster','companion'].includes(actor.kind)&&actor.choices?.monsterId?lookup('monsters',String(actor.choices.monsterId))?.size:lookup('species',actor.speciesId)?.size;
   const text=String(published||'').toLowerCase();
-  let rank=SIZE_CATEGORIES.findIndex(size=>text===size);
+  let rank=actor.profile==='free'?(actor.size!>=4?5:actor.size!>=3?4:actor.size!>=2?3:actor.size!<=.25?0:actor.size!<1?1:2):SIZE_CATEGORIES.findIndex(size=>text===size);
   if(rank<0)rank=['monster','companion'].includes(actor.kind)?(actor.size!>=4?5:actor.size!>=3?4:actor.size!>=2?3:2):2;
   const shifts=(actor.effects||[]).map(effect=>effect.modifiers?.sizeDelta||0);
   // Same named effects do not compound; one enlargement and one reduction can cancel.
