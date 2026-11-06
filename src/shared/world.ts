@@ -60,7 +60,7 @@ export interface WorldState {
   drafts: WorldDraft[]; proposals: WorldProposal[]; timeoutVotes: Record<string, TimeoutVote>;
   items: WorldItem[]; nodes: WorldNode[]; npcBehaviors: NpcBehavior[];
   energyAt: Record<string, number>; jobs: { id: string; actorId: string; ruleId: string; completesRound: number }[];
-  ai: { diceSource: 'program' | 'ai'; exchanges: AiExchange[]; narratives: { id: string; text: string; actorIds?: string[] }[] };
+  ai: { diceSource: 'program' | 'ai'; exchanges: AiExchange[]; narratives: { id: string; text: string; actorIds?: string[] }[]; display?: import('./ai-display').AiDisplayState };
 }
 export interface WorldContext {
   now: number; onlineMemberIds: string[]; members: Member[]; dice: Dice;
@@ -77,7 +77,7 @@ export interface WorldView {
   lore: string; secretLore?: string; rules: WorldRules; round: WorldRound;
   drafts: WorldDraft[]; proposals: WorldProposal[]; timeoutVotes: Record<string, TimeoutVote>;
   items: WorldItem[]; nodes: WorldNode[]; npcBehaviors?: NpcBehavior[]; energyAt: Record<string, number>;
-  ai: { diceSource: 'program' | 'ai'; narratives: WorldState['ai']['narratives']; exchanges?: AiExchange[] };
+  ai: { diceSource: 'program' | 'ai'; narratives: WorldState['ai']['narratives']; exchanges?: AiExchange[]; display?: import('./ai-display').AiDisplayView };
   capabilities: Capability[];
 }
 
