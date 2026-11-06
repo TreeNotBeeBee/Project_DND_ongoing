@@ -21,6 +21,17 @@ export const moduleInitializationSchema = z.strictObject({
   setting: z.strictObject({ fields, entities: z.array(displayEntitySchema).max(5000).optional(), map: displayMapSchema.optional() }),
   opening: z.strictObject({ fields, narratives: z.array(displayNarrativeSchema).max(5000).optional() }),
 });
+// Backup state permits exactly the server-owned field flag. Gameplay value.pending remains ordinary JSON.
+export const storedDisplayFieldSchema = displayFieldSchema.extend({ pending: z.boolean().optional() });
+const storedFields = z.record(key, storedDisplayFieldSchema);
+export const storedDisplayEntitySchema = displayEntitySchema.extend({ fields: storedFields });
+export const storedModuleInitializationSchema = moduleInitializationSchema.extend({
+  rules: moduleInitializationSchema.shape.rules.extend({ fields: storedFields }),
+  pcs: z.array(storedDisplayEntitySchema).max(500),
+  background: z.strictObject({ fields: storedFields }),
+  setting: z.strictObject({ fields: storedFields, entities: z.array(storedDisplayEntitySchema).max(5000).optional(), map: displayMapSchema.optional() }),
+  opening: z.strictObject({ fields: storedFields, narratives: z.array(displayNarrativeSchema).max(5000).optional() }),
+});
 const patch = z.union([
   z.strictObject({ op: z.literal('upsert'), target: z.literal('entity'), id: displayId, value: displayEntitySchema }),
   z.strictObject({ op: z.literal('upsert'), target: z.literal('narrative'), id: displayId, value: displayNarrativeSchema }),
