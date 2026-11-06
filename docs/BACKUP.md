@@ -49,7 +49,9 @@ npm run backup
 
 工具会输出备份路径，并生成同名 `.manifest.json`。清单包含数据库结构版本、代码提交与 SHA256 等校验信息。备份文件与清单必须一起保留。
 
-本次已用隔离世界实际演练：提交 `2642203` + schema `2` + 备份编号 `c218e9bc-0e1c-4df3-bba6-93bdb819972a`。恢复后角色状态、民主 / 房主否决治理和原会话完全一致。复验可运行 `node scripts/verify-rollback.mjs <Git检查点>`，证据存于忽略的 `work/rollback-proof-*/result.json`。
+本轮 schema 3 已用隔离世界实际演练：提交 `76170df` + 备份编号 `e6404e93-57ab-4c83-bb6f-249557c44ae7`，恢复后状态、治理和原会话一致；CLI 测试还单独验证了账号密码与多世界身份恢复。完整清单见[验收记录](VERIFICATION.md)。
+
+此前 schema 2 曾验证提交 `2642203` + 备份编号 `c218e9bc-0e1c-4df3-bba6-93bdb819972a`。复验可运行 `node scripts/verify-rollback.mjs <Git检查点>`，证据存于忽略的 `work/rollback-proof-*/result.json`。
 
 通过 Git 克隆运行时，清单可记录实际代码提交；通过 Download ZIP 解压、没有 Git 的环境会记录 `unversioned`。这种情况下，请同时保留当时下载的源码压缩包、程序版本和备份清单，方便配对恢复。
 

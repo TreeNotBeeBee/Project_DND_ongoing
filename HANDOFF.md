@@ -52,7 +52,9 @@ npm run build
 
 浏览器测试先运行 `安装或修复环境.cmd -Browsers`。测试必须使用临时数据目录，不能对真实 `data/` 写入。并行开发用独立 worktree，不要在共享 `node_modules` junction 上执行 `npm ci`。不要为了惯用而降级依赖；安装或升级前查询官方当前稳定版本。
 
-验收结果、发布检查点及回退演练在本轮收尾后填入 [VERIFICATION.md](docs/VERIFICATION.md)。
+交接发布标签：**`ai-display-beta2-20261106`**。本轮按小步提交记录在 Git 历史，回退起点为 `before-ai-display-20261106`。
+
+最终全量 **537 项通过，0 失败、0 跳过**；TypeScript、正式构建、干净 ZIP 无系统 Node 启动、真实公网两次换址 / WSS / 身份恢复和配套数据库回退均已验证。准确代码检查点、备份编号、校验值与重跑说明见 [VERIFICATION.md](docs/VERIFICATION.md)。之后新增提交应重新验证其相关行为。
 
 ## 后续优先事项
 
