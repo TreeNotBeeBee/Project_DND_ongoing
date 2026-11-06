@@ -10,7 +10,7 @@ export function object(value: unknown, label = '数据'): Record<string, any> {
 export function text(value: unknown, label: string, max = 4000, empty = false): string {
   assert(typeof value === 'string' && value.length <= max && (empty || value.trim().length > 0), 'WORLD_FORMAT', `${label}必须为${empty ? '0' : '1'}到${max}字的文本`); return value;
 }
-export function id(value: unknown): string { return text(value, '标识符', 128); }
+export function id(value: unknown): string { const result=text(value, '标识符', 128);assert(!['__proto__','constructor','prototype'].includes(result),'WORLD_FORMAT','标识符不能使用对象保留名称');return result; }
 function array(value: unknown, label: string, max = 1000): any[] { assert(Array.isArray(value) && value.length <= max, 'WORLD_FORMAT', `${label}必须为至多${max}项的数组`); return value; }
 function unique(values: string[], label: string): void { assert(new Set(values).size === values.length, 'WORLD_DUPLICATE', `${label}不能重复`); }
 export function validateRules(input: unknown): WorldRules {

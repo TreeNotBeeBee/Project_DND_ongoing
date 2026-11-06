@@ -18,6 +18,10 @@ test('six-decimal AP conversion is exact and rejects precision/overflow/nonfinit
  assert.equal(micro(1e-6),1);for(const value of [1e-7,Infinity,NaN,-1,1e20]) assert.throws(()=>micro(value));assert.equal(scaledRatio(1,3,10),3.333333);
  const {actor}=fixture();for(let i=0;i<1000;i++)spendEnergy(actor,0.000001);assert.equal(apResource(actor)!.current,99.999);
 });
+
+test('world definitions reject reserved object identifiers before they can become growth indexes',()=>{
+ const {world}=fixture();for(const value of ['__proto__','constructor','prototype']){const rules=structuredClone(world.rules);rules.growth.tracks[0].id=value;assert.throws(()=>validateRules(rules),/对象保留名称/);}assert.equal(world.rules.growth.tracks[0].id,'main');
+});
 test('hourly recovery includes offline actors, retains partial hours and never accrues a clock rollback',()=>{
  const {state,actor,world}=fixture();apResource(actor)!.current=1;recoverHourly(state,1_000+HOUR_MS-1);assert.equal(apResource(actor)!.current,1);recoverHourly(state,1_000+HOUR_MS*3+123);assert.equal(apResource(actor)!.current,1.000003);assert.equal(world.energyAt[actor.id],1_000+HOUR_MS*3);recoverHourly(state,0);assert.equal(apResource(actor)!.current,1.000003);
  actor.registration='available';recoverHourly(state,1_000+HOUR_MS*5);assert.equal(apResource(actor)!.current,1.000003);
