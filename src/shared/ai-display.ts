@@ -26,12 +26,15 @@ export interface AiPlayerBehavior { id: string; memberId: string; actorId: strin
 export interface AiDisplayRoll { id: string; sides: number; count: number; faces: number[]; purpose?: string; requestedBy: string; createdAt: number }
 export type AiDisplayExportKind = 'initialize' | 'player_selection' | 'turn_context' | 'roll_results';
 export interface AiDisplayExchange { id: string; kind: AiDisplayExportKind; revision: number; createdAt: number }
+export interface AiDisplayProfile { image?: string; publicFieldIds: string[] }
 export interface AiPendingConfirmation { id: string; path: string[]; value: DisplayJson; source: 'ai' }
 export interface AiDisplayState {
   version: 2; revision: number; freedom: AiFreedom; initialized: boolean;
   initialization?: AiModuleInitialization;
   entities: AiDisplayEntity[]; narratives: AiDisplayNarrative[]; map?: AiMapView;
   bindings: Record<string, string>; actions: AiPlayerBehavior[]; rolls: AiDisplayRoll[];
+  /** Member-controlled image/sharing override. AI packets cannot write this map. */
+  profiles?: Record<string, AiDisplayProfile>;
   draft?: { raw: string; updatedAt: number };
   pendingConfirmations: AiPendingConfirmation[];
   exchanges: AiDisplayExchange[];
@@ -41,9 +44,10 @@ export interface AiDisplayView {
   version: 2; revision: number; freedom: AiFreedom; initialized: boolean; ownPcId?: string;
   initialization?: AiModuleInitialization; entities: AiDisplayEntity[]; narratives: AiDisplayNarrative[]; map?: AiMapView;
   bindings: Record<string, string>; actions: AiPlayerBehavior[]; rolls: AiDisplayRoll[];
+  profiles?: Record<string, AiDisplayProfile>;
   draft?: AiDisplayState['draft']; pendingConfirmations?: AiPendingConfirmation[]; exchanges?: AiDisplayExchange[];
 }
 export interface AiDisplayContext { member: Member; members: Member[]; now: number; dice?: Dice }
 export function newAiDisplay(freedom: AiFreedom = 'B'): AiDisplayState {
-  return { version: 2, revision: 0, freedom, initialized: false, entities: [], narratives: [], bindings: {}, actions: [], rolls: [], pendingConfirmations: [], exchanges: [], decisions: {} };
+  return { version: 2, revision: 0, freedom, initialized: false, entities: [], narratives: [], bindings: {}, actions: [], rolls: [], profiles: {}, pendingConfirmations: [], exchanges: [], decisions: {} };
 }

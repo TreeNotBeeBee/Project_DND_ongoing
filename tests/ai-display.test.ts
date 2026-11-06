@@ -80,3 +80,22 @@ test('backup validation protects bindings, confirmation paths and JSON technical
   const f = init('A', m => { m.pcs[0].fields.hp = field({ current: -1e200, max: 1e-200 }, 'ai'); }); assert.doesNotThrow(() => validateAiDisplayState(f.state.world!.ai.display));
   for (const mutate of [(d: any) => { d.bindings.x = 'missing'; }, (d: any) => { d.bindings.x = 'pc'; d.bindings.y = 'pc'; }, (d: any) => { d.pendingConfirmations[0].path = ['bindings', 'owner']; }, (d: any) => { d.entities[0].fields.hp.value = Infinity; }]) { const bad = structuredClone(f.state.world!.ai.display); mutate(bad); assert.throws(() => validateAiDisplayState(bad)); }
 });
+test('PC fields are private by default, and only the bound player can publish their own non-secret fields or change their portrait', () => {
+  const f = init('B', m => { m.pcs[0].fields.secret = field('GM PC SECRET', 'module', 'gm'); m.pcs[0].fields.story = field('PRIVATE PC STORY', 'module', 'private', ['pc']); m.pcs[0].image = 'https://example.com/original.jpg'; });
+  const own = { ...f.ctx, member: player }; let state = command(f.state, own, 'ai.display.select', { actorId: 'pc' }).state;
+  assert.deepEqual(projectAiDisplay(state, other)!.entities.find(e => e.id === 'pc')!.fields, {});
+  assert.ok(Object.hasOwn(projectAiDisplay(state, player)!.entities.find(e => e.id === 'pc')!.fields, 'hp')); assert.ok(!JSON.stringify(projectAiDisplay(state, player)).includes('GM PC SECRET'));
+  assert.throws(() => command(state, { ...f.ctx, member: other }, 'ai.display.profile', { image: '/api/assets/abcdefgh' }), /领取自己的/);
+  for (const patch of [{ publicFieldIds: ['secret'] }, { publicFieldIds: ['not-real'] }, { actorId: 'enemy', image: '/api/assets/abcdefgh' }, { image: 'javascript:alert(1)' }]) assert.throws(() => command(state, own, 'ai.display.profile', patch));
+  state = command(state, own, 'ai.display.profile', { image: '/api/assets/abcdefgh', publicFieldIds: ['hp', 'story'] }).state;
+  const publicPc = projectAiDisplay(state, other)!.entities.find(e => e.id === 'pc')!; assert.equal(publicPc.image, '/api/assets/abcdefgh'); assert.deepEqual(Object.keys(publicPc.fields).sort(), ['hp', 'story']); assert.equal(publicPc.fields.story.value, 'PRIVATE PC STORY');
+  const e = exportAiDisplay(state, 'turn_context', f.ctx), changed = entity(); changed.image = 'https://example.com/ai-replacement.jpg';
+  const packet = { ...e.packet, packetType: 'update', payload: { decisionId: 'pc-image-update', patches: [{ op: 'upsert', target: 'entity', id: 'pc', value: changed }] } }; state = applyAiDisplayPacket(e.state, packet, f.ctx).state;
+  assert.equal(projectAiDisplay(state, player)!.entities.find(e => e.id === 'pc')!.image, '/api/assets/abcdefgh'); assert.equal(state.world!.ai.display!.entities[0].image, 'https://example.com/ai-replacement.jpg');
+  state = command(state, own, 'ai.display.profile', { image: null, publicFieldIds: [] }).state; assert.deepEqual(projectAiDisplay(state, other)!.entities.find(e => e.id === 'pc')!.fields, {}); assert.equal(projectAiDisplay(state, player)!.entities.find(e => e.id === 'pc')!.image, 'https://example.com/ai-replacement.jpg');
+  assert.doesNotThrow(() => validateAiDisplayState(state.world!.ai.display));
+});
+test('display dice follow server technical dice limits and optional fields round trip through backup', () => {
+  const f = init(); assert.throws(() => command(f.state, f.ctx, 'ai.display.roll', { count: 1, sides: 1_000_001 }));
+  const out = command(f.state, f.ctx, 'ai.display.roll', { count: 1, sides: 1_000_000 }); assert.deepEqual(out.state.world!.ai.display!.rolls[0].faces, [1_000_000]); assert.doesNotThrow(() => validateAiDisplayState(out.state.world!.ai.display));
+});
