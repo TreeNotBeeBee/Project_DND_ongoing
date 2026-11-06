@@ -9,6 +9,7 @@ import { equipWorldItem } from './inventory';
 import { executeEngine } from './engine';
 import { configureWorld, executeIntent, saveIntent, settleRound, startRound } from './rounds';
 import { id, object } from './validation';
+import { assertWorldIdentities } from './identity';
 
 export { advanceWorldTime } from './clock';
 export { reconcileWorldBonuses } from './growth';
@@ -20,6 +21,7 @@ export const isWorldCommand = (type: string): boolean => commands.has(type);
 export function resolveWorldCommand(input: GameState, command: Command, member: Member, ctx: WorldContext): Resolution {
   assert(isWorldCommand(command.type), 'WORLD_COMMAND', '未知世界命令');
   assert(ctx.members.some(entry => entry.id === member.id), 'WORLD_MEMBER', '操作者不属于此房间');
+  assertWorldIdentities(input);
   const advanced = advanceWorldTime(input, ctx); let state = advanced.state; const events = advanced.events, world = requireWorld(state), p = object(command.payload || {});
   if (handleGovernance(state, command, member, ctx, events)) return { state, events };
   switch (command.type) {

@@ -1,6 +1,6 @@
 import type { Command, GameState, Member, Resolution } from '../shared/model';
 import { CAPABILITIES, type Capability, type TimeoutVote, type WorldContext, type WorldDraft, type WorldProposal, type WorldState } from '../shared/world';
-import { assert } from '../engine/dice';
+import { assert, uid } from '../engine/dice';
 import { HOUR_MS } from './fixed';
 import { draftPayload, id, object, text } from './validation';
 
@@ -49,7 +49,7 @@ export function openProposal(state: GameState, draft: WorldDraft, command: Comma
   const world = requireWorld(state), electorate = [...new Set(registeredMembers(state, ctx))];
   assert(electorate.length <= 12, 'WORLD_ELECTORATE', '投票名单不能超过本房间12位成员');
   const proposal: WorldProposal = {
-    id: `proposal:${command.operationId}`, draftId: draft.id, authorId: draft.ownerId, title: draft.title, kind: draft.kind, payload: structuredClone(draft.payload),
+    id: `proposal:${uid()}`, draftId: draft.id, authorId: draft.ownerId, title: draft.title, kind: draft.kind, payload: structuredClone(draft.payload),
     electorate, ballots: {}, opensAt: ctx.now, closesAt: ctx.now + Math.ceil((world.rules.proposalHours ?? 24) * HOUR_MS), status: world.mode === 'co-create' ? 'open' : 'owner-review',
   };
   assert(!world.proposals.some(entry => entry.id === proposal.id), 'WORLD_DUPLICATE', '此提案已经提交');
@@ -64,7 +64,7 @@ export function handleGovernance(state: GameState, command: Command, member: Mem
       if (input.id !== undefined) assert(current && current.ownerId === member.id, 'WORLD_DRAFT_OWNER', '只能编辑自己的现有草稿');
       const kind = input.kind as WorldDraft['kind']; assert(['scene', 'rules', 'actor', 'story', 'items', 'nodes'].includes(kind), 'WORLD_DRAFT', '未知草稿种类');
       const title = input.title === undefined || input.title === '' ? '未命名草稿' : text(input.title, '草稿标题', 256);
-      const draft: WorldDraft = { id: current?.id || `draft:${command.operationId}`, ownerId: member.id, kind, title, payload: structuredClone(object(input.payload || {}, '草稿内容')), updatedAt: ctx.now };
+      const draft: WorldDraft = { id: current?.id || `draft:${uid()}`, ownerId: member.id, kind, title, payload: structuredClone(object(input.payload || {}, '草稿内容')), updatedAt: ctx.now };
       if (current) world.drafts[world.drafts.indexOf(current)] = draft;
       else { assert(world.drafts.length < 2000, 'WORLD_LIMIT', '草稿数量已达上限'); world.drafts.push(draft); }
       note(log, 'draft-saved', '个人草稿已保存，不消耗行动力'); return true;

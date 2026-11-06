@@ -1,6 +1,6 @@
 import type { Actor, Command, GameState, Member, Resolution } from '../shared/model';
 import type { PlannedIntent, WorldContext, WorldDraft, WorldState } from '../shared/world';
-import { assert } from '../engine/dice';
+import { assert, uid } from '../engine/dice';
 import { pathCost } from '../engine/map';
 import { hasEffect } from '../engine/actors';
 import { decimal, finite, micro } from './fixed';
@@ -11,6 +11,7 @@ import { equipWorldItem, finishJobs, gatherAmounts, grantItems, itemQuantity, pe
 import { hasCapability, note, openProposal, registeredMembers, requireCapability, requireOwner, requireWorld } from './governance';
 import { draftPayload, id, object, text, validateBehaviors, validateItems, validateNodes, validateRules } from './validation';
 import { runNpcPolicies } from './npc';
+import { assertWorldIdentities } from './identity';
 
 type Log = Resolution['events'];
 const pending = (intent: PlannedIntent) => intent.status === 'planned' || intent.status === 'approved';
@@ -145,11 +146,12 @@ export function saveIntent(state: GameState, command: Command, member: Member, c
   const originalIntents = world.round.intents;
   if (existing) world.round.intents = originalIntents.slice(0, originalIntents.indexOf(existing));
   let cost: number; try { cost = intentCost(state, actor, type, payload); } finally { world.round.intents = originalIntents; }
-  const intent: PlannedIntent = { id: existing?.id || `intent:${command.operationId}`, actorId: actor.id, memberId: actor.ownerId, type, payload, targetIds: Array.isArray(input.targetIds) ? input.targetIds.map(id) : [], cost, round: world.round.number, status: world.mode === 'co-create' ? 'approved' : 'planned' };
+  const intent: PlannedIntent = { id: existing?.id || `intent:${uid()}`, actorId: actor.id, memberId: actor.ownerId, type, payload, targetIds: Array.isArray(input.targetIds) ? input.targetIds.map(id) : [], cost, round: world.round.number, status: world.mode === 'co-create' ? 'approved' : 'planned' };
   assert(intent.targetIds.length <= 500 && world.round.intents.length < 2000, 'WORLD_LIMIT', '回合意图或目标数量过多'); reserve(state, intent);
   if (existing) world.round.intents[world.round.intents.indexOf(existing)] = intent; else world.round.intents.push(intent);
 }
 export function executeIntent(input: GameState, intentId: string, ctx: WorldContext): Resolution {
+  assertWorldIdentities(input);
   const state = structuredClone(input), world = requireWorld(state), intent = world.round.intents.find(intent => intent.id === intentId); assert(intent && intent.status === 'approved', 'WORLD_INTENT', '此意图未获批准或已经执行');
   const actor = findActor(state, intent.actorId), spent = micro(world.round.spent[actor.id] || 0);
   const original = world.round.intents; let actual: number;
@@ -190,6 +192,7 @@ function conflictOrder(state: GameState, wave: PlannedIntent[], ctx: WorldContex
   return order;
 }
 export function settleRound(input: GameState, member: Member, ctx: WorldContext): Resolution {
+  assertWorldIdentities(input);
   let state = structuredClone(input); const world = requireWorld(state); requireCapability(world, member, 'manage.rounds');
   assert(world.phase === 'running' && ['planning', 'settling'].includes(world.round.phase), 'WORLD_PHASE', '此回合已经结算');
   assert(!state.choices.length, 'WORLD_REACTION', '请先完成待决规则反应，再继续统一结算');
