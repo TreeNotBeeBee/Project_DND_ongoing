@@ -34,3 +34,7 @@ export function natural(value: unknown, name: string, max = Number.MAX_SAFE_INTE
   assert(Number.isSafeInteger(value) && Number(value) >= 0 && Number(value) <= max, 'WORLD_NUMBER', `${name}必须为0到${max}之间的整数`);
   return Number(value);
 }
+export function finite(value: unknown, name: string, signed = false): number {
+  assert(typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 1_000_000_000 && (signed || value >= 0), 'WORLD_NUMBER', `${name}必须为安全范围内的${signed ? '' : '非负'}有限数字`);
+  return value;
+}

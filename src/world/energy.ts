@@ -1,7 +1,7 @@
 import type { Actor, GameState, Resource } from '../shared/model';
 import type { GrowthTarget, WorldState } from '../shared/world';
 import { assert } from '../engine/dice';
-import { AP_SCALE, HOUR_MS, decimal, micro, scaledRatio } from './fixed';
+import { AP_SCALE, HOUR_MS, decimal, finite, micro } from './fixed';
 
 export function isActiveActor(actor: Actor): boolean {
   return !actor.draft && !actor.dead && (actor.kind !== 'hero' || actor.registration === undefined || actor.registration === 'registered');
@@ -12,7 +12,7 @@ export function worldItemBonuses(actor: Actor, world: WorldState): Partial<Recor
     const definition = world.items.find(entry => item.contentId === `world:${entry.id}`);
     for (const [key, value] of Object.entries(definition?.bonuses || {})) {
       const target = key as GrowthTarget;
-      result[target] = decimal(micro(result[target] || 0, target, true) + micro(value, target, true));
+      result[target] = target.startsWith('ap.') ? decimal(micro(result[target] || 0, target, true) + micro(value, target, true)) : finite((result[target] || 0) + finite(value, target, true), target, true);
     }
   }
   return result;
@@ -30,7 +30,7 @@ export function energyLimits(actor: Actor, world: WorldState) {
 export function apResource(actor: Actor): Resource | undefined { return actor.resources.find(resource => resource.id === 'ap'); }
 export function reconcileEnergy(actor: Actor, world: WorldState, initial = false): void {
   const { maximum } = energyLimits(actor, world), previous = apResource(actor);
-  const current = initial ? Math.min(maximum, world.rules.energy?.initial ?? maximum) : previous ? scaledRatio(previous.current, previous.max, maximum) : 0;
+  const current = initial ? Math.min(maximum, world.rules.energy?.initial ?? maximum) : previous ? Math.min(previous.current, maximum) : 0;
   if (previous) Object.assign(previous, { name: '行动力', current, max: maximum, recovery: 'manual' });
   else actor.resources.push({ id: 'ap', name: '行动力', current, max: maximum, recovery: 'manual' });
 }

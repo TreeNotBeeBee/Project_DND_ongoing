@@ -1,7 +1,7 @@
 import { ABILITIES, type Actor, type GameState } from '../shared/model';
 import type { GrowthTarget, GrowthTrackRule, WorldRules } from '../shared/world';
 import { assert } from '../engine/dice';
-import { decimal, micro, natural, scaledRatio } from './fixed';
+import { decimal, finite, micro, natural } from './fixed';
 import { reconcileEnergy, worldItemBonuses } from './energy';
 
 export function threshold(rule: GrowthTrackRule, level: number): number { return rule.curve[Math.min(Math.max(0, level - 1), rule.curve.length - 1)]; }
@@ -34,24 +34,23 @@ export function reconcileWorldBonuses(state: GameState): void {
   if (!world) return;
   for (const actor of state.actors) {
     const equipment = worldItemBonuses(actor, world), next: Partial<Record<GrowthTarget, number>> = {};
-    for (const key of [...ABILITIES, 'hp', 'mp', 'stamina'] as GrowthTarget[]) next[key] = decimal(micro(actor.growth?.bonuses[key] || 0, key, true) + micro(equipment[key] || 0, key, true));
+    for (const key of [...ABILITIES, 'hp', 'mp', 'stamina'] as GrowthTarget[]) next[key] = finite((actor.growth?.bonuses[key] || 0) + (equipment[key] || 0), key, true);
     actor.choices ||= {};
     const previous = (actor.choices._worldAppliedBonuses || {}) as Partial<Record<GrowthTarget, number>>;
     if (actor.profile === 'free') {
       for (const ability of ABILITIES) {
-        actor.abilities[ability] = decimal(micro(actor.abilities[ability], ability) + micro(next[ability] || 0, ability, true) - micro(previous[ability] || 0, ability, true));
-        assert(actor.abilities[ability] > 0, 'WORLD_GROWTH', '装备和成长不能将属性降至0');
+        actor.abilities[ability] = finite(actor.abilities[ability] + (next[ability] || 0) - (previous[ability] || 0), ability, true);
       }
-      const oldMaximum = actor.hp.max, delta = micro(next.hp || 0, '生命', true) - micro(previous.hp || 0, '生命', true);
-      const maximum = decimal(micro(oldMaximum) + delta);
+      const oldMaximum = actor.hp.max, delta = (next.hp || 0) - (previous.hp || 0);
+      const maximum = finite(oldMaximum + delta, '最大生命');
       assert(maximum > 0, 'WORLD_GROWTH', '装备和成长不能将最大生命降至0');
-      if (actor.manual) actor.manual.maxHp = decimal(micro(actor.manual.maxHp) + delta);
-      actor.hp.max = maximum; actor.hp.current = scaledRatio(actor.hp.current, oldMaximum, maximum);
+      if (actor.manual) actor.manual.maxHp = finite(actor.manual.maxHp + delta, '基础最大生命');
+      actor.hp.max = maximum; actor.hp.current = Math.min(actor.hp.current, maximum);
       for (const id of ['mp', 'stamina'] as const) {
-        const delta = micro(next[id] || 0, id, true) - micro(previous[id] || 0, id, true);
+        const delta = (next[id] || 0) - (previous[id] || 0);
         let resource = actor.resources.find(resource => resource.id === id);
         if (!resource && delta > 0) { resource = { id, name: id === 'mp' ? '法力' : '体力', max: 0, current: 0, recovery: 'manual' }; actor.resources.push(resource); }
-        if (resource) { const oldMaximum = resource.max; resource.max = decimal(micro(resource.max) + delta); assert(resource.max >= 0, 'WORLD_GROWTH', '资源上限不能为负'); resource.current = scaledRatio(resource.current, oldMaximum, resource.max); }
+        if (resource) { resource.max = finite(resource.max + delta, '资源上限'); resource.current = Math.min(resource.current, resource.max); }
       }
       actor.choices._worldAppliedBonuses = next;
     }
@@ -64,9 +63,11 @@ export function spendGrowth(actor: Actor, rules: WorldRules, trackId: string, ta
   assert(rule && upgrade && progress, 'WORLD_TRACK', '成长轨道或加点规则不存在');
   natural(points, '消费点数');
   assert(points > 0 && points % upgrade.cost === 0 && points <= progress.points, 'WORLD_POINTS', '点数不足，或消费点数不是规则成本的整数倍');
-  const current = micro(actor.growth!.bonuses[target] || 0, target, true), increase = BigInt(micro(upgrade.amount)) * BigInt(points / upgrade.cost);
-  assert(increase <= BigInt(Number.MAX_SAFE_INTEGER), 'WORLD_GROWTH', '成长数值超出安全范围');
-  const value = decimal(current + Number(increase));
+  let value: number;
+  if (target.startsWith('ap.')) {
+    const current = micro(actor.growth!.bonuses[target] || 0, target, true), increase = BigInt(micro(upgrade.amount)) * BigInt(points / upgrade.cost);
+    assert(increase <= BigInt(Number.MAX_SAFE_INTEGER), 'WORLD_GROWTH', '成长数值超出安全范围'); value = decimal(current + Number(increase));
+  } else value = finite((actor.growth!.bonuses[target] || 0) + upgrade.amount * (points / upgrade.cost), target, true);
   assert(upgrade.max === undefined || value <= upgrade.max, 'WORLD_GROWTH_CAP', '本项成长已超过规则上限');
   actor.growth!.bonuses[target] = value; progress.points -= points;
 }

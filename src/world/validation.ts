@@ -1,7 +1,7 @@
 import { ABILITIES, type Actor, type Scene } from '../shared/model';
 import type { GrowthTarget, NpcBehavior, WorldDraft, WorldItem, WorldNode, WorldRules } from '../shared/world';
 import { assert } from '../engine/dice';
-import { micro, natural } from './fixed';
+import { finite, micro, natural } from './fixed';
 
 export const GROWTH_TARGETS: GrowthTarget[] = [...ABILITIES, 'hp', 'mp', 'stamina', 'ap.maximum', 'ap.recovery', 'ap.perRound'];
 export function object(value: unknown, label = '数据'): Record<string, any> {
@@ -35,8 +35,8 @@ export function validateRules(input: unknown): WorldRules {
     assert(track.curve.length, 'WORLD_RULES', '升级曲线不能为空'); natural(track.pointsPerLevel, '每级成长点', 1_000_000);
     for (const upgrade of array(track.upgrades, '加点规则', 100)) {
       assert(GROWTH_TARGETS.includes(upgrade.target), 'WORLD_RULES', '未知成长目标');
-      assert(natural(upgrade.cost, '升级成本', 1_000_000) > 0 && micro(upgrade.amount, '升级数量') > 0, 'WORLD_RULES', '加点成本和收益必须大于0');
-      if (upgrade.max !== undefined) micro(upgrade.max, '成长上限');
+      assert(natural(upgrade.cost, '升级成本', 1_000_000) > 0 && (upgrade.target.startsWith('ap.') ? micro(upgrade.amount, '升级数量') : finite(upgrade.amount, '升级数量')) > 0, 'WORLD_RULES', '加点成本和收益必须大于0');
+      if (upgrade.max !== undefined) upgrade.target.startsWith('ap.') ? micro(upgrade.max, '成长上限') : finite(upgrade.max, '成长上限');
     }
     unique(track.upgrades.map((entry: any) => entry.target), '轨道加点目标');
   }
@@ -53,7 +53,7 @@ export function validateRules(input: unknown): WorldRules {
 }
 export function validateItems(input: unknown): WorldItem[] {
   const items = structuredClone(array(input, '世界物品', 2000)) as WorldItem[];
-  for (const item of items) { id(item.id); text(item.name, '物品名称', 128); text(item.description, '物品说明', 10_000, true); for (const [key, value] of Object.entries(item.bonuses || {})) { assert(GROWTH_TARGETS.includes(key as GrowthTarget), 'WORLD_RULES', '未知物品加成'); micro(value, '物品加成', true); } }
+  for (const item of items) { id(item.id); text(item.name, '物品名称', 128); text(item.description, '物品说明', 10_000, true); for (const [key, value] of Object.entries(item.bonuses || {})) { assert(GROWTH_TARGETS.includes(key as GrowthTarget), 'WORLD_RULES', '未知物品加成'); key.startsWith('ap.') ? micro(value, '物品加成', true) : finite(value, '物品加成', true); } }
   unique(items.map(item => item.id), '物品'); return items;
 }
 export function validateNodes(input: unknown, items: WorldItem[]): WorldNode[] {
