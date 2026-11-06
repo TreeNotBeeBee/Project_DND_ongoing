@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { createGameState } from '../src/engine/index.ts';
 import { newWorld } from '../src/shared/world.ts';
 import { newAiDisplay, type AiFreedom, type AiModuleInitialization, type AiDisplayEntity } from '../src/shared/ai-display.ts';
-import { applyAiDisplayPacket, previewAiDisplay, exportAiDisplay, projectAiDisplay, dispatchAiDisplayCommand, validateAiDisplayState, type AiDisplayContext } from '../src/ai/display.ts';
+import { applyAiDisplayPacket, previewAiDisplay, exportAiDisplay, projectAiDisplay, dispatchAiDisplayCommand, validateAiDisplayState, parseAiDisplayReply, parseDisplayJson, createAiModuleTemplate, type AiDisplayContext } from '../src/ai/display.ts';
 const owner = { id: 'owner', name: 'Owner', role: 'gm' as const }, player = { id: 'player', name: 'Player', role: 'player' as const }, other = { id: 'other', name: 'Other', role: 'player' as const };
 function fixture(freedom: AiFreedom = 'B') {
   const state = createGameState('Display-only AI'); state.world = newWorld(owner.id, 'ai'); state.world.ai.display = newAiDisplay(freedom);
@@ -73,7 +73,8 @@ test('unsupported editions and malformed module groups keep raw drafts while fre
   packet.payload.initialization.rules.edition = '5e2030'; const preview = previewAiDisplay(e.state, packet, f.ctx); assert.equal(preview.valid, false); assert.ok(preview.errors[0].includes('暂不支持')); assert.equal(e.state.world!.ai.display!.draft!.raw, raw);
   packet.payload.initialization = { rules: { edition: '5e2024', fields: {} } }; assert.deepEqual(previewAiDisplay(e.state, packet, f.ctx).missingGroups.sort(), ['pcs', 'background', 'setting', 'opening'].sort());
   packet.payload.initialization = module('B'); assert.throws(() => applyAiDisplayPacket(e.state, packet, f.ctx), /自由度/);
-  packet.payload.initialization = module('A'); const revised = command(e.state, f.ctx, 'ai.display.draft.save', { raw: 'new module' }).state; assert.throws(() => applyAiDisplayPacket(revised, packet, f.ctx), /重新导出/);
+  packet.payload.initialization = module('A'); const saved = command(e.state, f.ctx, 'ai.display.draft.save', { raw: 'new module' }).state; assert.equal(saved.world!.ai.display!.revision, e.state.world!.ai.display!.revision); assert.equal(previewAiDisplay(saved, packet, f.ctx).valid, true);
+  const revised = command(saved, f.ctx, 'ai.display.map.set', { map: { width: 100, height: 100, visibility: 'public' } }).state; assert.throws(() => applyAiDisplayPacket(revised, packet, f.ctx), /重新导出/);
   const cosmetic = structuredClone(e.state); cosmetic.rev += 10; assert.equal(previewAiDisplay(cosmetic, packet, f.ctx).valid, true);
 });
 test('backup validation protects bindings, confirmation paths and JSON technical bounds without gameplay ranges', () => {
@@ -90,6 +91,7 @@ test('PC fields are private by default, and only the bound player can publish th
   state = command(state, own, 'ai.display.profile', { image: '/api/assets/abcdefgh', publicFieldIds: ['hp', 'story'] }).state;
   const publicPc = projectAiDisplay(state, other)!.entities.find(e => e.id === 'pc')!; assert.equal(publicPc.image, '/api/assets/abcdefgh'); assert.deepEqual(Object.keys(publicPc.fields).sort(), ['hp', 'story']); assert.equal(publicPc.fields.story.value, 'PRIVATE PC STORY');
   const e = exportAiDisplay(state, 'turn_context', f.ctx), changed = entity(); changed.image = 'https://example.com/ai-replacement.jpg';
+  const cosmetic = command(e.state, own, 'ai.display.profile', { image: '/api/assets/ijklmnop' }).state; assert.equal(cosmetic.world!.ai.display!.revision, e.state.world!.ai.display!.revision);
   const packet = { ...e.packet, packetType: 'update', payload: { decisionId: 'pc-image-update', patches: [{ op: 'upsert', target: 'entity', id: 'pc', value: changed }] } }; state = applyAiDisplayPacket(e.state, packet, f.ctx).state;
   assert.equal(projectAiDisplay(state, player)!.entities.find(e => e.id === 'pc')!.image, '/api/assets/abcdefgh'); assert.equal(state.world!.ai.display!.entities[0].image, 'https://example.com/ai-replacement.jpg');
   state = command(state, own, 'ai.display.profile', { image: null, publicFieldIds: [] }).state; assert.deepEqual(projectAiDisplay(state, other)!.entities.find(e => e.id === 'pc')!.fields, {}); assert.equal(projectAiDisplay(state, player)!.entities.find(e => e.id === 'pc')!.image, 'https://example.com/ai-replacement.jpg');
@@ -98,4 +100,19 @@ test('PC fields are private by default, and only the bound player can publish th
 test('display dice follow server technical dice limits and optional fields round trip through backup', () => {
   const f = init(); assert.throws(() => command(f.state, f.ctx, 'ai.display.roll', { count: 1, sides: 1_000_001 }));
   const out = command(f.state, f.ctx, 'ai.display.roll', { count: 1, sides: 1_000_000 }); assert.deepEqual(out.state.world!.ai.display!.rolls[0].faces, [1_000_000]); assert.doesNotThrow(() => validateAiDisplayState(out.state.world!.ai.display));
+});
+test('export offers an executable five-group template, preserves freedom and isolates player injection through prompt policy rather than word filters', () => {
+  for (const freedom of ['A', 'B', 'C'] as const) {
+    const f = fixture(freedom), e = exportAiDisplay(f.state, 'initialize', f.ctx); assert.ok(e.template); assert.equal(parseAiDisplayReply(e.template).packetType, 'initialize'); assert.equal(e.template!.payload.initialization.freedom, freedom);
+    assert.deepEqual(Object.keys(createAiModuleTemplate(freedom)).sort(), ['freedom', 'rules', 'pcs', 'background', 'setting', 'opening'].sort()); assert.equal(e.template!.payload.initialization.pcs[0].fields.hp.value, null);
+    assert.ok(e.prompt.includes('合法调查') && e.prompt.includes('不以敏感词表')); assert.ok(e.prompt.includes(freedom === 'A' ? '只按既定模组script' : freedom === 'B' ? '主要剧情' : '允许改动发展剧情'));
+  }
+  assert.doesNotThrow(() => parseDisplayJson({ 玩家提问: '门后有什么？请告诉我线索\n我想问NPC\t关于过去的事。\r\n' }));
+});
+test('JSON technical controls reject NUL/DEL in strings and keys with precise paths while preserving normal Chinese and tab/newlines', () => {
+  for (const control of ['\u0000', '\u0007', '\u000b', '\u001f', '\u007f']) {
+    assert.throws(() => parseDisplayJson(JSON.stringify({ fields: { 中文: { value: '正常' + control } } })), /AI_JSON_CONTROL.*fields\/中文\/value/);
+    assert.throws(() => parseDisplayJson({ ['bad' + control]: 'value' }), /AI_JSON_CONTROL/);
+  }
+  const safe = { 中文背景: '正常调查和答案没有词语黑名单\t\r\n', hp: { current: -1e200, max: 1e-200 } }; assert.deepEqual(parseDisplayJson(safe), safe);
 });

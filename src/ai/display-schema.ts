@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import type { DisplayJson } from '../shared/ai-display';
 
-export const displayId = z.string().min(1).max(128).refine(value => !['__proto__', 'prototype', 'constructor'].includes(value), 'Unsafe identifier');
+const unsafeControls = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/u;
+export const displayId = z.string().min(1).max(128).refine(value => !['__proto__', 'prototype', 'constructor'].includes(value) && !/[\u0000-\u001F\u007F]/u.test(value), 'Unsafe identifier/control character');
 const key = displayId;
 export const displayJsonSchema: z.ZodType<DisplayJson> = z.lazy(() => z.union([z.null(), z.boolean(), z.number().finite(), z.string().max(1_000_000), z.array(displayJsonSchema).max(10_000), z.record(key, displayJsonSchema)]));
 const audience = { visibility: z.enum(['public', 'private', 'gm']), audience: z.array(displayId).max(500).optional() };
@@ -35,12 +36,13 @@ export const AI_DISPLAY_REPLY_JSON_SCHEMA = z.toJSONSchema(aiDisplayReplySchema,
 /** Bound JSON depth/nodes before recursive schema parsing, without imposing game-stat ranges. */
 export function parseDisplayJson(input: unknown): unknown {
   const value = typeof input === 'string' ? JSON.parse(input) : structuredClone(input); let nodes = 0;
-  function visit(item: unknown, depth: number): void {
+  function visit(item: unknown, depth: number, path: string): void {
     if (++nodes > 200_000 || depth > 40) throw new Error('AI JSON exceeds the technical size/depth limit');
     if (typeof item === 'number' && !Number.isFinite(item)) throw new Error('AI JSON numbers must be finite');
-    if (item && typeof item === 'object') { if (!Array.isArray(item) && Object.getPrototypeOf(item) !== Object.prototype && Object.getPrototypeOf(item) !== null) throw new Error('AI JSON must contain plain objects'); for (const [name, child] of Object.entries(item)) { if (['__proto__', 'prototype', 'constructor'].includes(name)) throw new Error('Unsafe AI JSON key'); visit(child, depth + 1); } }
+    if (typeof item === 'string' && unsafeControls.test(item)) throw new Error(`AI_JSON_CONTROL at ${JSON.stringify(path)}: strings cannot contain C0 control characters except tab/CR/LF, or DEL`);
+    if (item && typeof item === 'object') { if (!Array.isArray(item) && Object.getPrototypeOf(item) !== Object.prototype && Object.getPrototypeOf(item) !== null) throw new Error('AI JSON must contain plain objects'); for (const [name, child] of Object.entries(item)) { const pointer = path + '/' + name.replaceAll('~', '~0').replaceAll('/', '~1'); if (unsafeControls.test(name)) throw new Error(`AI_JSON_CONTROL at ${JSON.stringify(pointer)}: object keys contain a prohibited control character`); if (['__proto__', 'prototype', 'constructor'].includes(name)) throw new Error('Unsafe AI JSON key'); visit(child, depth + 1, pointer); } }
     else if (item !== null && !['number', 'string', 'boolean'].includes(typeof item)) throw new Error('AI JSON contains a non-JSON value');
   }
-  visit(value, 0); if (JSON.stringify(value).length > 8_000_000) throw new Error('AI JSON exceeds 8 MB'); return value;
+  visit(value, 0, '$'); if (JSON.stringify(value).length > 8_000_000) throw new Error('AI JSON exceeds 8 MB'); return value;
 }
 export const parseAiDisplayReply = (input: unknown): AiDisplayReply => aiDisplayReplySchema.parse(parseDisplayJson(input));
