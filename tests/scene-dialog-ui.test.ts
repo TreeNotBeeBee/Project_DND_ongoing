@@ -13,7 +13,7 @@ let runtime: Awaited<ReturnType<typeof createApplication>>;
 before(async () => {
   directory = await mkdtemp(join(tmpdir(), 'jige-scene-dialog-'));
   const dist = join(directory, 'web');
-  execFileSync(process.execPath, ['node_modules/vite/bin/vite.js', 'build', '--outDir', dist], { windowsHide: true, stdio: 'ignore', timeout: 120_000 });
+  execFileSync(process.execPath, ['node_modules/vite/bin/vite.js', 'build', '--outDir', dist], { env: { ...process.env, VITE_TEST_LEGACY_UI: '1' }, windowsHide: true, stdio: 'ignore', timeout: 120_000 });
   runtime = await createApplication({ dataDir: join(directory, 'data'), distDir: dist, hostToken: 'scene-ui-test-only' });
   base = `http://127.0.0.1:${(await runtime.listen(0)).port}`;
   browser = await chromium.launch({ headless: true, args: ['--enable-unsafe-swiftshader', '--use-angle=swiftshader'] });

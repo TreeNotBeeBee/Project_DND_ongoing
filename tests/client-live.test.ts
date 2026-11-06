@@ -11,7 +11,7 @@ import type { Actor, Snapshot } from '../src/shared/model';
 
 let runtime: Awaited<ReturnType<typeof createApplication>>; let browser: Browser; let base: string; let directory: string;
 before(async () => {
-  execFileSync(process.execPath, ['node_modules/vite/bin/vite.js', 'build'], { cwd: process.cwd(), windowsHide: true, stdio: 'ignore' });
+  execFileSync(process.execPath, ['node_modules/vite/bin/vite.js', 'build'], { env: { ...process.env, VITE_TEST_LEGACY_UI: '1' }, cwd: process.cwd(), windowsHide: true, stdio: 'ignore' });
   directory = await mkdtemp(join(tmpdir(), 'jige-clientlive-'));
   runtime = await createApplication({ dataDir: join(directory, 'data'), distDir: resolve('dist'), hostToken: 'test-local-bootstrap-token', dice: sides => Math.max(1, Math.floor(sides / 2)) });
   const address = await runtime.listen(0); base = `http://127.0.0.1:${address.port}`;

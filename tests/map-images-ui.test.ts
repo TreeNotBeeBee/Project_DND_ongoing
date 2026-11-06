@@ -14,7 +14,7 @@ let runtime: Awaited<ReturnType<typeof createApplication>>, browser: Browser, di
 before(async () => {
   directory = await mkdtemp(join(tmpdir(), 'jige-map-images-'));
   const dist = join(directory, 'dist');
-  execFileSync(process.execPath, ['node_modules/vite/bin/vite.js', 'build', '--outDir', dist, '--emptyOutDir'], { cwd: process.cwd(), windowsHide: true, stdio: 'pipe' });
+  execFileSync(process.execPath, ['node_modules/vite/bin/vite.js', 'build', '--outDir', dist, '--emptyOutDir'], { env: { ...process.env, VITE_TEST_LEGACY_UI: '1' }, cwd: process.cwd(), windowsHide: true, stdio: 'pipe' });
   runtime = await createApplication({ dataDir: join(directory, 'data'), distDir: dist, hostToken: 'isolated-map-image-test' });
   const address = await runtime.listen(0); base = `http://127.0.0.1:${address.port}`;
   browser = await chromium.launch({ headless: true, args: ['--enable-unsafe-swiftshader', '--use-angle=swiftshader'] });

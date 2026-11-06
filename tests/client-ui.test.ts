@@ -11,7 +11,7 @@ import type { Command, Snapshot } from '../src/shared/model';
 let server: ChildProcess; let browser: Browser;
 const base = 'http://127.0.0.1:5197';
 before(async () => {
-  server = spawn(process.execPath, [path.resolve('node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', '5197', '--strictPort'], { cwd: process.cwd(), windowsHide: true, stdio: 'ignore' });
+  server = spawn(process.execPath, [path.resolve('node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', '5197', '--strictPort'], { cwd: process.cwd(), windowsHide: true, stdio: 'ignore', env: { ...process.env, VITE_TEST_LEGACY_UI: '1' } });
   const start = Date.now();
   while (Date.now() - start < 15000) {
     try { const response = await fetch(`${base}/app.html`); if (response.ok) break; } catch {}
