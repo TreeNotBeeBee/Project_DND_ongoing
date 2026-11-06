@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import Database from 'better-sqlite3';
+import WebSocket from 'ws';
+import { once } from 'node:events';
 import { createApplication } from '../src/server/app';
 import { onlineBackup, openDatabase, SCHEMA_VERSION } from '../src/server/database';
 
@@ -116,4 +118,19 @@ test('a paired database backup and CLI restore retain passwords, hosting authori
   assert.equal((await fresh.request('/api/worlds')).data.worlds.length, 2);
   assert.equal((await fresh.request('/api/worlds/enter', { worldId: first.data.state.id })).data.session.member.id, first.data.session.member.id);
   assert.equal((await fresh.request('/api/worlds/enter', { worldId: second.data.state.id })).data.session.member.id, second.data.session.member.id);
+});
+
+test('linking a legacy identity closes its pre-account WebSocket before any later private broadcasts', async t => {
+  const f = await setup(t), legacy = f.client(), account = f.client();
+  const old = await legacy.request('/api/campaigns', { name: '旧连接', mode: 'gm', hostToken: 'host-local-only' });
+  const address = f.runtime.server.address() as { port: number }, origin = `http://127.0.0.1:${address.port}`;
+  const socket = new WebSocket(origin.replace('http:', 'ws:') + '/ws', { headers: { origin, cookie: [...legacy.cookies].map(([key, value]) => `${key}=${value}`).join('; ') } });
+  t.after(() => socket.terminate());
+  await once(socket, 'open');
+  const closed = once(socket, 'close');
+  await account.request('/api/account/register', { username: 'new-link-owner', password: 'account-password' });
+  assert.equal((await account.request('/api/recover', { recoveryCode: old.data.recoveryCode })).status, 200);
+  const [code] = await closed; assert.equal(code, 4001);
+  assert.equal((await legacy.request('/api/state')).status, 401);
+  assert.equal((await account.request('/api/state')).data.session.member.id, old.data.session.member.id);
 });

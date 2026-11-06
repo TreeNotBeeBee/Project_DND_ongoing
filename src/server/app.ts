@@ -152,10 +152,20 @@ export async function createApplication(options: ServerOptions) {
     const occupied: any = db.prepare('SELECT member_id FROM account_members WHERE account_id=? AND campaign_id=?').get(accountId, campaignId);
     if (occupied && occupied.member_id !== memberId) throw new ApiError(409, 'world_identity_exists', '此账号在这个世界已有身份；不会覆盖角色归属');
     db.prepare('INSERT OR IGNORE INTO account_members(member_id,account_id,campaign_id) VALUES (?,?,?)').run(memberId, accountId, campaignId);
+    // A pre-account WebSocket may still be open in another browser. It must reauthenticate now.
+    if (!linked) for (const [ws, client] of clients) if (client.memberId === memberId) ws.close(4001, 'identity linked to account');
+  }
+  function socketAuthorized(ws: WebSocket, memberId: string) {
+    const active = db.prepare('SELECT 1 FROM sessions WHERE token_hash=? AND member_id=? AND expires_at>?').get((ws as any).sessionHash, memberId, Date.now());
+    if (!active) return false;
+    const linked: any = db.prepare('SELECT account_id FROM account_members WHERE member_id=?').get(memberId);
+    if (!linked) return true;
+    return Boolean(db.prepare('SELECT 1 FROM account_sessions WHERE token_hash=? AND account_id=? AND expires_at>?').get((ws as any).accountSessionHash || '', linked.account_id, Date.now()));
   }
   function broadcast(campaignId: string) {
     for (const [ws, client] of clients) {
       if (client.campaignId !== campaignId || ws.readyState !== WebSocket.OPEN) continue;
+      if (!socketAuthorized(ws, client.memberId)) { ws.close(4001, 'session expired'); continue; }
       if (ws.bufferedAmount > 2 * 1024 * 1024) { ws.close(1013, 'slow consumer'); continue; }
       const member: any = db.prepare('SELECT id,name,role FROM members WHERE id=?').get(client.memberId);
       if (!member) { ws.close(4001, 'membership revoked'); continue; }
@@ -574,7 +584,7 @@ export async function createApplication(options: ServerOptions) {
     });
   });
   const heartbeat=setInterval(()=>{
-    for(const[ws,c]of clients){const active=db.prepare('SELECT 1 FROM sessions WHERE token_hash=? AND expires_at>?').get((ws as any).sessionHash,Date.now());const accountActive=!(ws as any).accountSessionHash||db.prepare('SELECT 1 FROM account_sessions WHERE token_hash=? AND expires_at>?').get((ws as any).accountSessionHash,Date.now());if(!active||!accountActive){ws.close(4001,'session expired');continue;}if(Date.now()-c.lastPong>65_000){ws.terminate();continue;}if(ws.readyState===WebSocket.OPEN){ws.ping();ws.send(JSON.stringify({type:'ping'}));}}
+    for(const[ws,c]of clients){if(!socketAuthorized(ws,c.memberId)){ws.close(4001,'session expired');continue;}if(Date.now()-c.lastPong>65_000){ws.terminate();continue;}if(ws.readyState===WebSocket.OPEN){ws.ping();ws.send(JSON.stringify({type:'ping'}));}}
     db.prepare('DELETE FROM sessions WHERE expires_at<=?').run(Date.now());
     db.prepare('DELETE FROM account_sessions WHERE expires_at<=?').run(Date.now());
   },25_000);heartbeat.unref();
