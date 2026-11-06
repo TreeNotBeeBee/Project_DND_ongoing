@@ -43,6 +43,9 @@ test('a real rule 400 returns false, clears pending/persisted work and allows a 
 test('a real permission 403 is reported without preventing a subsequent legal player operation',async t=>{
  const f=await fixture(t),invite=(await snapshot(f.page)).inviteCode!,player=await f.open();assert.equal(await player.evaluate(invite=>(window as unknown as ProbeWindow).probe.authenticate('join',{inviteCode:invite,name:'Player'}),invite),true);await expect.poll(async()=>(await snapshot(player))?.session.member.role).toBe('player');const count=f.count();
  assert.equal(await command(player,'gm.pause',undefined,{paused:true}),false);await expect(player.locator('#error')).toContainText('只有主持人');assert.equal((await pending(player)).length,0);assert.equal(f.count(),count);assert.equal(await command(player,'actor.create',undefined,{name:'Own draft',draft:true}),true);assert.equal((await snapshot(player)).state.actors[0].name,'Own draft');
+ await command(f.page,'gm.pause',undefined,{paused:true});const actorId=(await snapshot(player)).state.actors[0].id;
+ assert.equal(await command(player,'actor.update',actorId,{patch:{name:'Paused rename'}}),false);assert.equal((await pending(player)).length,0);await expect(player.locator('#error')).toContainText('暂停');
+ await command(f.page,'gm.pause',undefined,{paused:false});assert.equal(await command(player,'actor.update',actorId,{patch:{name:'After resume'}}),true);
 });
 
 test('a definite character-claim 409 clears its rejected request while preserving future legal commands',async t=>{
