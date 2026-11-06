@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { newWorld } from '../shared/world';
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 export const CODE_VERSION = '2.0.0-beta.1';
 export type GameDatabase = Database.Database;
 
@@ -79,7 +79,12 @@ export async function openDatabase(dataDirectory: string, lock = true) {
         CREATE TABLE IF NOT EXISTS operations (campaign_id TEXT NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE, member_id TEXT NOT NULL, operation_id TEXT NOT NULL, command_type TEXT NOT NULL, command_json TEXT NOT NULL, before_state TEXT NOT NULL, events TEXT NOT NULL, undone INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, PRIMARY KEY(campaign_id,member_id,operation_id));
         CREATE TABLE IF NOT EXISTS migrations (campaign_id TEXT NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE, fingerprint TEXT NOT NULL, member_id TEXT NOT NULL, report TEXT NOT NULL, PRIMARY KEY(campaign_id,fingerprint));
         CREATE TABLE IF NOT EXISTS assets (id TEXT PRIMARY KEY, campaign_id TEXT NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE, owner_id TEXT NOT NULL, mime TEXT NOT NULL, sha256 TEXT NOT NULL, bytes BLOB NOT NULL, created_at TEXT NOT NULL, UNIQUE(campaign_id,owner_id,sha256));
+        CREATE TABLE IF NOT EXISTS accounts (id TEXT PRIMARY KEY, username TEXT NOT NULL, username_key TEXT NOT NULL UNIQUE, display_name TEXT NOT NULL, password_hash TEXT NOT NULL, can_host INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS account_sessions (token_hash TEXT PRIMARY KEY, account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE, expires_at INTEGER NOT NULL);
+        CREATE TABLE IF NOT EXISTS account_members (member_id TEXT PRIMARY KEY REFERENCES members(id) ON DELETE CASCADE, account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE, campaign_id TEXT NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE, UNIQUE(account_id,campaign_id));
+        CREATE INDEX IF NOT EXISTS account_sessions_expiry ON account_sessions(expires_at);
       `);
+      if (!db!.prepare('PRAGMA table_info(campaigns)').all().some((column: any) => column.name === 'account_required')) db!.exec('ALTER TABLE campaigns ADD COLUMN account_required INTEGER NOT NULL DEFAULT 0');
       if (version < 2) {
         const update = db!.prepare('UPDATE campaigns SET state=? WHERE id=?');
         for (const row of db!.prepare('SELECT id,state FROM campaigns').all() as { id: string; state: string }[]) {

@@ -20,6 +20,7 @@ import { advanceWorldTime } from '../world/clock';
 import { executeEngine } from '../world/engine';
 import { applyAiPacket, createAiExchange, previewAiPacket, resolveAiReaction, resumeAiDecisions, type AiContext, type ExchangeKind } from '../ai/protocol';
 import { assetReferences, canReadAsset, exportAssets, restoreAssets, saveImageAsset, validateAssetReferences } from './assets';
+import { accountInput, passwordHash, verifyPassword } from './accounts';
 
 export interface ServerOptions {
   dataDir: string; distDir?: string; hostToken?: string; engine?: any; content?: any;
@@ -30,6 +31,7 @@ export interface ServerOptions {
 }
 export const DEFAULT_BODY_LIMITS=Object.freeze({large:64*1024*1024,command:12*1024*1024,small:16*1024});
 const COOKIE = 'jige_session';
+const ACCOUNT_COOKIE = 'jige_account';
 const MAX_MEMBERS = 12;
 const copy = <T,>(v: T): T => structuredClone(v);
 const cleanName = (v: unknown, fallback: string) => typeof v === 'string' ? v.trim().slice(0, 80) || fallback : fallback;
@@ -74,13 +76,22 @@ export async function createApplication(options: ServerOptions) {
   const sessionDuration = Math.max(1, Math.min(365, options.sessionDays || 30)) * 86400_000;
   const ipOf = (ctx: any) => publicOrigin && ctx.host === new URL(publicOrigin).host ? ctx.get('cf-connecting-ip') || ctx.req.socket.remoteAddress || 'unknown' : ctx.req.socket.remoteAddress || 'unknown';
   function cookieToken(ctx: any) { return ctx.cookies.get(COOKIE) || ''; }
-  function sessionByToken(token: string) {
+  function accountByToken(token: string) {
+    if (!token || token.length > 256) return null;
+    const row: any = db.prepare('SELECT a.* FROM account_sessions s JOIN accounts a ON a.id=s.account_id WHERE s.token_hash=? AND s.expires_at>?').get(hash(token), Date.now());
+    return row ? { id: row.id as string, username: row.username as string, displayName: row.display_name as string, canCreateWorld: Boolean(row.can_host) } : null;
+  }
+  function currentAccount(ctx: any) { return accountByToken(ctx.cookies.get(ACCOUNT_COOKIE) || ''); }
+  function accountAuth(ctx: any) { const account = currentAccount(ctx); if (!account) throw new ApiError(401, 'account_required', '请先登录账号'); return account; }
+  function sessionByToken(token: string, accountToken = '', allowUnlinked = true) {
     if (!token || token.length > 256) return null;
     const row: any = db.prepare('SELECT m.*,s.expires_at FROM sessions s JOIN members m ON m.id=s.member_id WHERE s.token_hash=?').get(hash(token));
     if (!row || row.expires_at <= Date.now()) return null;
+    const linked: any = db.prepare('SELECT account_id FROM account_members WHERE member_id=?').get(row.id);
+    if (linked && accountByToken(accountToken)?.id !== linked.account_id || !linked && !allowUnlinked) return null;
     return { member: { id: row.id, name: row.name, role: row.role } as Member, campaignId: row.campaign_id };
   }
-  function auth(ctx: any) { const session = sessionByToken(cookieToken(ctx)); if (!session) throw new ApiError(401, 'unauthorized', '请加入房间或使用个人恢复码'); return session; }
+  function auth(ctx: any) { const session = sessionByToken(cookieToken(ctx), ctx.cookies.get(ACCOUNT_COOKIE) || ''); if (!session) throw new ApiError(401, 'unauthorized', '请先登录账号并进入世界，或恢复旧身份'); return session; }
   function gmAuth(ctx: any) { const session = auth(ctx); if (session.member.role !== 'gm') throw new ApiError(403, 'gm_only', '只有主持人可以执行此操作'); return session; }
   function hostAuth(ctx: any) { const token = ctx.get('x-jige-host-token') || ctx.get('authorization').replace(/^Bearer\s+/i, ''); if (!equalSecret(token, hostToken)) throw new ApiError(403, 'host_only', '需要本机主机凭据'); }
   function campaign(id: string) { const row: any = db.prepare('SELECT * FROM campaigns WHERE id=?').get(id); if (!row) throw new ApiError(404, 'campaign_missing', '战役不存在'); return row; }
@@ -105,12 +116,38 @@ export async function createApplication(options: ServerOptions) {
   }
   const assetContext = { db, raw: (id: string) => json(campaign(id).state) as GameState, projected: snapshot };
   function issueSession(ctx: any, memberId: string) {
+    revokeWorldSession(ctx);
     const token = secret();
     db.prepare('INSERT INTO sessions(token_hash,member_id,expires_at) VALUES (?,?,?)').run(hash(token), memberId, Date.now() + sessionDuration);
     const remote = publicOrigin && ctx.host === new URL(publicOrigin).host;
     ctx.append('Set-Cookie', `${COOKIE}=${token}; HttpOnly; Path=/; SameSite=Strict; Max-Age=${Math.floor(sessionDuration/1000)}${remote ? '; Secure' : ''}`);
   }
   function clearCookie(ctx: any) { ctx.append('Set-Cookie', `${COOKIE}=; HttpOnly; Path=/; SameSite=Strict; Max-Age=0${publicOrigin && ctx.host === new URL(publicOrigin).host ? '; Secure' : ''}`); }
+  function revokeWorldSession(ctx: any) {
+    const old = cookieToken(ctx);
+    if (old) db.prepare('DELETE FROM sessions WHERE token_hash=?').run(hash(old));
+    for (const [ws] of clients) if ((ws as any).sessionHash === hash(old)) ws.close(4001, 'world changed');
+  }
+  function accountCookie(ctx: any, token: string, maxAge = Math.floor(sessionDuration / 1000)) {
+    ctx.append('Set-Cookie', `${ACCOUNT_COOKIE}=${token}; HttpOnly; Path=/; SameSite=Strict; Max-Age=${maxAge}${publicOrigin && ctx.host === new URL(publicOrigin).host ? '; Secure' : ''}`);
+  }
+  function issueAccountSession(ctx: any, accountId: string) {
+    const old = ctx.cookies.get(ACCOUNT_COOKIE) || '';
+    if (old) db.prepare('DELETE FROM account_sessions WHERE token_hash=?').run(hash(old));
+    // A world cookie linked to another account must never survive switching accounts.
+    const oldMember: any = db.prepare('SELECT m.id,am.account_id FROM sessions s JOIN members m ON m.id=s.member_id LEFT JOIN account_members am ON am.member_id=m.id WHERE s.token_hash=?').get(hash(cookieToken(ctx)));
+    if (oldMember?.account_id && oldMember.account_id !== accountId) { revokeWorldSession(ctx); clearCookie(ctx); }
+    const token = secret();
+    db.prepare('INSERT INTO account_sessions(token_hash,account_id,expires_at) VALUES (?,?,?)').run(hash(token), accountId, Date.now() + sessionDuration);
+    accountCookie(ctx, token);
+  }
+  function linkMember(accountId: string, memberId: string, campaignId: string) {
+    const linked: any = db.prepare('SELECT account_id FROM account_members WHERE member_id=?').get(memberId);
+    if (linked && linked.account_id !== accountId) throw new ApiError(403, 'identity_linked', '该旧身份已关联其他账号，不能再次认领');
+    const occupied: any = db.prepare('SELECT member_id FROM account_members WHERE account_id=? AND campaign_id=?').get(accountId, campaignId);
+    if (occupied && occupied.member_id !== memberId) throw new ApiError(409, 'world_identity_exists', '此账号在这个世界已有身份；不会覆盖角色归属');
+    db.prepare('INSERT OR IGNORE INTO account_members(member_id,account_id,campaign_id) VALUES (?,?,?)').run(memberId, accountId, campaignId);
+  }
   function broadcast(campaignId: string) {
     for (const [ws, client] of clients) {
       if (client.campaignId !== campaignId || ws.readyState !== WebSocket.OPEN) continue;
@@ -153,7 +190,7 @@ export async function createApplication(options: ServerOptions) {
   app.use(async(ctx:any,next:any)=>{
     const path=ctx.path.replace(/\/+$/,'');
     const large=path==='/api/migrate'||path==='/api/restore';
-    const small=['/api/campaigns','/api/join','/api/recover','/api/logout'].includes(path);
+    const small=['/api/campaigns','/api/join','/api/recover','/api/logout'].includes(path) || path.startsWith('/api/account') || path.startsWith('/api/worlds');
     const kind=large?'large':small?'small':'command';const limit=limits[kind];
     if(ctx.method==='POST'&&large){
       const session=path==='/api/restore'?gmAuth(ctx):auth(ctx);
@@ -165,8 +202,61 @@ export async function createApplication(options: ServerOptions) {
   });
   router.get('/api/health', ctx => sendJson(ctx, { ok: true, version: CODE_VERSION, serverId: storage.serverId }));
   router.get('/api/host', async (ctx: any) => { hostAuth(ctx); sendJson(ctx, { ...tunnelStatus, qrDataUrl: publicOrigin ? await QRCode.toDataURL(publicOrigin, { width: 256, margin: 2 }) : null, localUrl, serverId: storage.serverId, version: CODE_VERSION }); });
+  router.get('/api/account', (ctx: any) => {
+    const session = sessionByToken(cookieToken(ctx), ctx.cookies.get(ACCOUNT_COOKIE) || '');
+    const linked = session && db.prepare('SELECT 1 FROM account_members WHERE member_id=?').get(session.member.id);
+    sendJson(ctx, { account: currentAccount(ctx), ...(session && !linked ? { legacySession: session } : {}) });
+  });
+  router.post('/api/account/register', async (ctx: any) => {
+    const body = object(ctx.request.body), input = accountInput(body);
+    limiter.check(`register:${ipOf(ctx)}`, 8, 3600_000);
+    if (db.prepare('SELECT 1 FROM accounts WHERE username_key=?').get(input.usernameKey)) throw new ApiError(409, 'username_exists', '此账号已存在，请登录或换一个账号');
+    const encoded = await passwordHash(input.password);
+    const id = randomUUID(), canCreateWorld = equalSecret(body.hostToken, hostToken);
+    db.transaction(() => {
+      if (db.prepare('SELECT 1 FROM accounts WHERE username_key=?').get(input.usernameKey)) throw new ApiError(409, 'username_exists', '此账号已存在，请登录');
+      db.prepare('INSERT INTO accounts(id,username,username_key,display_name,password_hash,can_host,created_at) VALUES (?,?,?,?,?,?,?)').run(id, input.username, input.usernameKey, input.displayName, encoded, Number(canCreateWorld), new Date().toISOString());
+      issueAccountSession(ctx, id);
+    })();
+    sendJson(ctx, { account: { id, username: input.username, displayName: input.displayName, canCreateWorld } }, 201);
+  });
+  router.post('/api/account/login', async (ctx: any) => {
+    const body = object(ctx.request.body), input = accountInput(body);
+    limiter.check(`login:${ipOf(ctx)}`, 20);
+    limiter.check(`login-account:${input.usernameKey}`, 10);
+    const row: any = db.prepare('SELECT * FROM accounts WHERE username_key=?').get(input.usernameKey);
+    // An unknown username still performs the same password KDF, reducing account probing by timing.
+    const encoded = row?.password_hash || 'argon2id$v=19$m=65536,t=3,p=1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+    const valid = await verifyPassword(input.password, encoded);
+    if (!row || !valid) throw new ApiError(401, 'login_invalid', '账号或密码不正确');
+    if (equalSecret(body.hostToken, hostToken)) db.prepare('UPDATE accounts SET can_host=1 WHERE id=?').run(row.id);
+    issueAccountSession(ctx, row.id);
+    sendJson(ctx, { account: { id: row.id, username: row.username, displayName: row.display_name, canCreateWorld: Boolean(row.can_host) || equalSecret(body.hostToken, hostToken) } });
+  });
+  router.post('/api/account/logout', (ctx: any) => {
+    const token = ctx.cookies.get(ACCOUNT_COOKIE) || '';
+    if (token) db.prepare('DELETE FROM account_sessions WHERE token_hash=?').run(hash(token));
+    revokeWorldSession(ctx); clearCookie(ctx); accountCookie(ctx, '', 0); sendJson(ctx, { ok: true });
+  });
+  router.post('/api/account/link-current', (ctx: any) => {
+    const account = accountAuth(ctx), session = auth(ctx);
+    linkMember(account.id, session.member.id, session.campaignId);
+    sendJson(ctx, { ok: true, worldId: session.campaignId });
+  });
+  router.get('/api/worlds', (ctx: any) => {
+    const account = accountAuth(ctx);
+    const rows: any[] = db.prepare('SELECT c.id,c.name,c.state,c.updated_at,m.role,m.id AS member_id FROM account_members am JOIN campaigns c ON c.id=am.campaign_id JOIN members m ON m.id=am.member_id WHERE am.account_id=? ORDER BY c.updated_at DESC,c.id').all(account.id);
+    sendJson(ctx, { worlds: rows.map(row => { const state = json(row.state) as GameState; return { id: row.id, name: row.name, mode: state.world?.mode || 'gm', phase: state.world?.phase || 'running', role: row.role, isOwner: state.world ? state.world.ownerId === row.member_id : row.role === 'gm', updatedAt: row.updated_at }; }) });
+  });
+  router.post('/api/worlds/enter', (ctx: any) => {
+    const account = accountAuth(ctx), body = object(ctx.request.body);
+    const row: any = db.prepare('SELECT m.* FROM account_members am JOIN members m ON m.id=am.member_id WHERE am.account_id=? AND am.campaign_id=?').get(account.id, typeof body.worldId === 'string' ? body.worldId : '');
+    if (!row) throw new ApiError(404, 'world_missing', '世界不存在或此账号没有加入权限');
+    issueSession(ctx, row.id); sendJson(ctx, snapshot({ member: { id: row.id, name: row.name, role: row.role }, campaignId: row.campaign_id }));
+  });
+  router.post('/api/worlds/leave', (ctx: any) => { accountAuth(ctx); revokeWorldSession(ctx); clearCookie(ctx); sendJson(ctx, { ok: true }); });
   router.get('/api/content', ctx => {
-    const session = sessionByToken(cookieToken(ctx));
+    const session = sessionByToken(cookieToken(ctx), ctx.cookies.get(ACCOUNT_COOKIE) || '');
     if (!session) return sendJson(ctx, { entries: [], source: content.source || 'SRD 5.2.1 — CC BY 4.0' });
     const raw = json(campaign(session.campaignId).state) as GameState;
     const owner = raw.world ? raw.world.ownerId === session.member.id : session.member.role === 'gm';
@@ -179,9 +269,11 @@ export async function createApplication(options: ServerOptions) {
   router.get('/api/assets/:id', (ctx: any) => { const session = auth(ctx), id = ctx.params.id; if (!canReadAsset(assetContext, session, id)) throw new ApiError(404, 'asset_missing', '图片不存在或不可见'); const row = db.prepare('SELECT mime,bytes FROM assets WHERE id=?').get(id) as any; ctx.type = row.mime; ctx.body = row.bytes; });
   router.post('/api/campaigns', (ctx: any) => {
     const body = object(ctx.request.body); limiter.check(`create:${ipOf(ctx)}`, 5);
-    if (!equalSecret(body.hostToken, hostToken)) throw new ApiError(403, 'host_only', '创建战役需要本机主机凭据');
+    const account = currentAccount(ctx);
+    if (!(account?.canCreateWorld || equalSecret(body.hostToken, hostToken))) throw new ApiError(403, 'host_only', '创建世界需要在本机启动器地址登录并授权');
+    if (account && body.mode === undefined) throw new ApiError(400, 'world_mode', '请选择世界模式');
     const id = randomUUID(), memberId = randomUUID(), recoveryCode = secret();
-    const name = cleanName(body.name, '新的冒险'); const member: Member = { id: memberId, name: cleanName(body.gmName, '主持人'), role: 'gm' };
+    const name = cleanName(body.name, '新的冒险'); const member: Member = { id: memberId, name: cleanName(body.gmName, account?.displayName || '主持人'), role: 'gm' };
     const state: GameState = engine.createGameState(name); state.id = id; state.rev = 0; state.events ||= []; state.choices ||= [];
     if (body.mode !== undefined) {
       if (!['gm','ai','co-create'].includes(body.mode)) throw new ApiError(400, 'world_mode', '请选择有效的房间模式');
@@ -192,8 +284,9 @@ export async function createApplication(options: ServerOptions) {
     const inviteCode = randomBytes(9).toString('base64url').toUpperCase();
     db.transaction(() => {
       const now = new Date().toISOString();
-      db.prepare('INSERT INTO campaigns(id,name,invite_code,state,created_at,updated_at) VALUES (?,?,?,?,?,?)').run(id, name, inviteCode, JSON.stringify(state), now, now);
+      db.prepare('INSERT INTO campaigns(id,name,invite_code,state,created_at,updated_at,account_required) VALUES (?,?,?,?,?,?,?)').run(id, name, inviteCode, JSON.stringify(state), now, now, Number(Boolean(account)));
       db.prepare('INSERT INTO members(id,campaign_id,name,role,recovery_hash) VALUES (?,?,?,?,?)').run(memberId,id,member.name,'gm',hash(recoveryCode));
+      if (account) linkMember(account.id, memberId, id);
       issueSession(ctx, memberId);
     })();
     sendJson(ctx, { ...snapshot({member,campaignId:id}), recoveryCode }, 201);
@@ -201,13 +294,17 @@ export async function createApplication(options: ServerOptions) {
   router.post('/api/join', (ctx: any) => {
     const body = object(ctx.request.body); limiter.check(`join:${ipOf(ctx)}`, 20);
     const invite = String(body.inviteCode || '').trim().toUpperCase();
-    const row: any = db.prepare('SELECT id FROM campaigns WHERE invite_code=?').get(invite);
+    const row: any = db.prepare('SELECT id,account_required FROM campaigns WHERE invite_code=?').get(invite);
     if (!row) throw new ApiError(404, 'invite_invalid', '邀请码无效');
-    const member: Member = {id:randomUUID(),name:cleanName(body.name,'冒险者'),role:'player'}, recoveryCode = secret();
+    const account = row.account_required ? accountAuth(ctx) : currentAccount(ctx);
+    const existing: any = account && db.prepare('SELECT m.* FROM account_members am JOIN members m ON m.id=am.member_id WHERE am.account_id=? AND am.campaign_id=?').get(account.id, row.id);
+    if (existing) { issueSession(ctx, existing.id); return sendJson(ctx, snapshot({ member: { id: existing.id, name: existing.name, role: existing.role }, campaignId: row.id })); }
+    const member: Member = {id:randomUUID(),name:cleanName(body.name,account?.displayName || '冒险者'),role:'player'}, recoveryCode = secret();
     db.transaction(() => {
       const count: any = db.prepare('SELECT COUNT(*) AS n FROM members WHERE campaign_id=?').get(row.id);
       if (count.n >= MAX_MEMBERS) throw new ApiError(409, 'room_full', '房间已满（含主持人最多 12 人）');
       db.prepare('INSERT INTO members(id,campaign_id,name,role,recovery_hash) VALUES (?,?,?,?,?)').run(member.id,row.id,member.name,'player',hash(recoveryCode));
+      if (account) linkMember(account.id, member.id, row.id);
       issueSession(ctx, member.id);
     })();
     sendJson(ctx, { ...snapshot({member,campaignId:row.id}), recoveryCode }); broadcast(row.id);
@@ -218,11 +315,15 @@ export async function createApplication(options: ServerOptions) {
     if (!/^[A-Za-z0-9_-]{43}$/.test(code)) throw new ApiError(401, 'recovery_invalid', '个人恢复码无效');
     const row: any = db.prepare('SELECT * FROM members WHERE recovery_hash=?').get(hash(code));
     if (!row) throw new ApiError(401, 'recovery_invalid', '个人恢复码无效');
+    const linked: any = db.prepare('SELECT account_id FROM account_members WHERE member_id=?').get(row.id);
+    const account = currentAccount(ctx);
+    if (linked && linked.account_id !== account?.id) throw new ApiError(403, 'identity_linked', '此身份已关联账号，请使用该账号和密码登录');
+    if (campaign(row.campaign_id).account_required && !account) throw new ApiError(401, 'account_required', '请先登录账号');
+    if (account) linkMember(account.id, row.id, row.campaign_id);
     issueSession(ctx,row.id); sendJson(ctx,snapshot({member:{id:row.id,name:row.name,role:row.role},campaignId:row.campaign_id}));
   });
   router.post('/api/logout', (ctx: any) => {
-    const old = cookieToken(ctx); if (old) db.prepare('DELETE FROM sessions WHERE token_hash=?').run(hash(old)); clearCookie(ctx);
-    for (const [ws, client] of clients) if ((ws as any).sessionHash === hash(old)) ws.close(4001,'logged out');
+    revokeWorldSession(ctx); clearCookie(ctx);
     sendJson(ctx,{ok:true});
   });
   router.get('/api/state', (ctx: any) => sendJson(ctx,snapshot(auth(ctx))));
@@ -433,13 +534,15 @@ export async function createApplication(options: ServerOptions) {
     let path='';try{path=new URL(req.url||'/','http://localhost').pathname;}catch{}
     const origin=String(req.headers.origin||'');
     if(path!=='/ws'||!origins.has(origin)){socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');socket.destroy();return;}
-    const cookie=String(req.headers.cookie||'').split(';').map(v=>v.trim()).find(v=>v.startsWith(COOKIE+'='))?.slice(COOKIE.length+1)||'';
-    const session=sessionByToken(cookie);
+    const cookies=String(req.headers.cookie||'').split(';').map(v=>v.trim());
+    const cookie=cookies.find(v=>v.startsWith(COOKIE+'='))?.slice(COOKIE.length+1)||'';
+    const accountToken=cookies.find(v=>v.startsWith(ACCOUNT_COOKIE+'='))?.slice(ACCOUNT_COOKIE.length+1)||'';
+    const session=sessionByToken(cookie,accountToken);
     if(!session){socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');socket.destroy();return;}
     const count=[...clients.values()].filter(c=>c.memberId===session.member.id).length;
     if(count>=6){socket.write('HTTP/1.1 429 Too Many Requests\r\nConnection: close\r\n\r\n');socket.destroy();return;}
     wss.handleUpgrade(req,socket,head,ws=>{
-      (ws as any).sessionHash=hash(cookie);clients.set(ws,{memberId:session.member.id,campaignId:session.campaignId,lastPong:Date.now()});
+      (ws as any).sessionHash=hash(cookie); (ws as any).accountSessionHash=accountToken?hash(accountToken):null;clients.set(ws,{memberId:session.member.id,campaignId:session.campaignId,lastPong:Date.now()});
       ws.on('message',(raw,binary)=>{if(binary)return ws.close(1003,'json required');try{const msg=json(String(raw));if(msg?.type==='pong'){const c=clients.get(ws);if(c)c.lastPong=Date.now();}else ws.close(1008,'only heartbeat messages accepted');}catch{ws.close(1007,'invalid json');}});
       ws.on('pong',()=>{const c=clients.get(ws);if(c)c.lastPong=Date.now();});
       ws.on('close',()=>{clients.delete(ws);broadcast(session.campaignId);});ws.on('error',()=>{});
@@ -447,8 +550,9 @@ export async function createApplication(options: ServerOptions) {
     });
   });
   const heartbeat=setInterval(()=>{
-    for(const[ws,c]of clients){const active=db.prepare('SELECT 1 FROM sessions WHERE token_hash=? AND expires_at>?').get((ws as any).sessionHash,Date.now());if(!active){ws.close(4001,'session expired');continue;}if(Date.now()-c.lastPong>65_000){ws.terminate();continue;}if(ws.readyState===WebSocket.OPEN){ws.ping();ws.send(JSON.stringify({type:'ping'}));}}
+    for(const[ws,c]of clients){const active=db.prepare('SELECT 1 FROM sessions WHERE token_hash=? AND expires_at>?').get((ws as any).sessionHash,Date.now());const accountActive=!(ws as any).accountSessionHash||db.prepare('SELECT 1 FROM account_sessions WHERE token_hash=? AND expires_at>?').get((ws as any).accountSessionHash,Date.now());if(!active||!accountActive){ws.close(4001,'session expired');continue;}if(Date.now()-c.lastPong>65_000){ws.terminate();continue;}if(ws.readyState===WebSocket.OPEN){ws.ping();ws.send(JSON.stringify({type:'ping'}));}}
     db.prepare('DELETE FROM sessions WHERE expires_at<=?').run(Date.now());
+    db.prepare('DELETE FROM account_sessions WHERE expires_at<=?').run(Date.now());
   },25_000);heartbeat.unref();
   const worldClock=setInterval(()=>{
     try {
