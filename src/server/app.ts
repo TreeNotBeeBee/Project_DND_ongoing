@@ -350,7 +350,7 @@ export async function createApplication(options: ServerOptions) {
       const appended = appendEvents(before, exported.state, [...advanced.events,{ type: 'ai.export', message: '房主已导出AI交换上下文', gmOnly: true }], operationId, row.event_sequence);
       persistState(row.id, exported.state, appended.sequence);
       db.prepare('INSERT INTO operations(campaign_id,member_id,operation_id,command_type,command_json,before_state,events,created_at) VALUES (?,?,?,?,?,?,?,?)').run(row.id, session.member.id, operationId, 'ai.export', JSON.stringify({ kind: body.kind }), JSON.stringify(before), JSON.stringify(appended.events), new Date().toISOString());
-      return { packet: exported.packet, schema: exported.schema, prompt: exported.prompt };
+      return { packet: exported.packet, schema: exported.schema, prompt: exported.prompt, ...('template' in exported ? { template: exported.template } : {}) };
     })();
     sendJson(ctx, result); broadcast(session.campaignId);
   });
@@ -511,6 +511,8 @@ export async function createApplication(options: ServerOptions) {
     const session=gmAuth(ctx), body=object(ctx.request.body), backup=object(body.backup);
     if(backup.format!=='jigerpg-campaign'||backup.version!==1||!Number.isInteger(backup.schemaVersion)||backup.schemaVersion<1||backup.schemaVersion>SCHEMA_VERSION||backup.campaignId!==session.campaignId) throw new ApiError(400,'backup_invalid','请选择当前战役、兼容版本的完整备份');
     const candidate=validateBackupState(copy(object(backup.state)));
+    const currentForRestore = json(campaign(session.campaignId).state) as GameState;
+    if (Boolean(currentForRestore.world?.ai.display) !== Boolean(candidate.world?.ai.display)) throw new ApiError(400, 'backup_protocol', '备份与当前世界的AI协议不同，请在相同协议的世界恢复，避免混用原生规则角色与展示数据');
     if(candidate.world?.ai.display){const knownMembers=new Set(worldContext(session.campaignId).members.map(member=>member.id));for(const id of Object.keys(candidate.world.ai.display.bindings))if(!knownMembers.has(id))throw new ApiError(400,'backup_invalid','AI角色绑定引用了其他世界的成员');}
     validateActorOwnership(candidate,new Map((db.prepare('SELECT id,role FROM members WHERE campaign_id=?').all(session.campaignId) as Member[]).map(member=>[member.id,member.role])));
     if(candidate.id!==session.campaignId||!Array.isArray(candidate.actors)||candidate.actors.length>500||!Array.isArray(candidate.events)||!Array.isArray(candidate.choices)||!candidate.scene||!candidate.combat) throw new ApiError(400,'backup_invalid','备份状态结构无效');
