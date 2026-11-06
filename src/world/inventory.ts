@@ -51,11 +51,14 @@ function award(state: GameState, actor: Actor, rule: Pick<WorldActionRule, 'outp
 }
 export function performRecipe(state: GameState, actor: Actor, payload: Record<string, any>, operationId: string, log: Resolution['events']): void {
   const world = requireWorld(state), rule = world.rules.recipes.find(rule => rule.id === payload.ruleId); assert(rule, 'WORLD_RECIPE', '制作规则不存在');
-  if (payload.npcId !== undefined) {
-    const merchant = state.actors.find(candidate => candidate.id === payload.npcId), behavior = world.npcBehaviors.find(behavior => behavior.actorId === merchant?.id && behavior.kind === 'trade' && behavior.ruleId === rule.id);
+  let merchant: Actor | undefined;
+  if (payload.npcId !== undefined || world.npcBehaviors.some(behavior => behavior.kind === 'trade' && behavior.ruleId === rule.id)) {
+    merchant = state.actors.find(candidate => candidate.id === payload.npcId); const behavior = world.npcBehaviors.find(behavior => behavior.actorId === merchant?.id && behavior.kind === 'trade' && behavior.ruleId === rule.id);
     assert(merchant && !merchant.dead && behavior && Math.max(Math.abs(merchant.position.x - actor.position.x), Math.abs(merchant.position.y - actor.position.y)) <= 1, 'WORLD_TRADE', '此交易需要在相邻且提供该交易的商人处进行');
+    for (const output of rule.outputs) assert(itemQuantity(merchant, output.itemId) >= output.quantity, 'WORLD_TRADE_STOCK', '商人的实际库存不足');
   }
   removeItems(actor, rule.inputs); spendResources(actor, rule.resourceCosts);
+  if (merchant) { removeItems(merchant, rule.outputs); grantItems(state, merchant, rule.inputs, `trade:${operationId}`); }
   if (rule.durationRounds) {
     const jobId = `job:${operationId}`; assert(world.jobs.length < 2000, 'WORLD_LIMIT', '进行中的制作任务已达上限');
     world.jobs.push({ id: jobId, actorId: actor.id, ruleId: rule.id, completesRound: world.round.number + rule.durationRounds }); actor.choices ||= {};

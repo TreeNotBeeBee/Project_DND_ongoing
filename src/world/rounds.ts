@@ -20,6 +20,11 @@ export function validateCatalog(state: GameState): void {
   for (const recipe of world.rules.recipes) for (const entry of [...recipe.inputs, ...recipe.outputs]) assert(known.has(entry.itemId), 'WORLD_ITEM', '配方引用的世界物品必须存在');
   for (const node of world.nodes) for (const entry of node.inventory) assert(known.has(entry.itemId), 'WORLD_ITEM', '节点引用的世界物品必须存在');
   for (const actor of state.actors) for (const item of actor.inventory) if (item.contentId.startsWith('world:')) assert(known.has(item.contentId.slice(6)), 'WORLD_ITEM', '不能删除角色仍持有的物品定义');
+  for (const behavior of world.npcBehaviors) {
+    if (behavior.ruleId) assert(world.rules.recipes.some(rule => rule.id === behavior.ruleId), 'WORLD_RECIPE', 'NPC行为引用的制作或交易规则不存在');
+    if (behavior.kind === 'trade') assert(behavior.ruleId, 'WORLD_TRADE', '交易NPC必须选择一个已定义的交易规则');
+    if (behavior.kind === 'patrol') assert(behavior.waypoints?.length && behavior.waypoints.every(position => position.x < state.scene.width && position.y < state.scene.height), 'WORLD_PATROL', '巡逻行为需要场景内的路线点');
+  }
   for (const job of world.jobs) {
     const actor = state.actors.find(actor => actor.id === job.actorId), snapshot = (actor?.choices?._worldJobs as Record<string, any> | undefined)?.[job.id];
     assert(snapshot && snapshot.outputs.every((entry: any) => known.has(entry.itemId)), 'WORLD_JOB', '不能删除进行中制作任务的产出定义');
@@ -76,6 +81,7 @@ export function resourceClaims(state: GameState, intent: PlannedIntent): Claim[]
     const recipe = world.rules.recipes.find(recipe => recipe.id === payload.ruleId); assert(recipe, 'WORLD_RECIPE', '配方不存在');
     for (const amount of recipe.inputs) claims.push({ key: `actor:${actor.id}:item:${amount.itemId}`, quantity: amount.quantity, available: itemQuantity(actor, amount.itemId) });
     for (const amount of recipe.resourceCosts || []) claims.push({ key: `actor:${actor.id}:resource:${amount.resourceId}`, quantity: amount.amount, available: actor.resources.find(resource => resource.id === amount.resourceId)?.current || 0 });
+    if (payload.npcId) { const merchant = state.actors.find(actor => actor.id === payload.npcId); assert(merchant, 'WORLD_TRADE', '交易商人不存在'); for (const amount of recipe.outputs) claims.push({ key: `actor:${merchant.id}:item:${amount.itemId}`, quantity: amount.quantity, available: itemQuantity(merchant, amount.itemId) }); }
   }
   if (intent.type === 'action') for (const amount of actor.customActions?.find(action => action.id === payload.actionId)?.costs || []) if (amount.resourceId !== 'ap') claims.push({ key: `actor:${actor.id}:resource:${amount.resourceId}`, quantity: amount.amount, available: actor.resources.find(resource => resource.id === amount.resourceId)?.current || 0 });
   return claims;
@@ -91,21 +97,30 @@ function reserve(state: GameState, candidate: PlannedIntent): void {
     for (const claim of resourceClaims(forecast, intent)) assert(claim.quantity <= claim.available, 'WORLD_RESOURCE_RESERVED', '本轮计划重复保留了不足的法力、体力、材料或节点资源');
     if (intent.type === 'move') future.position = structuredClone((intent.payload.path as Actor['position'][]).at(-1)!);
     if (intent.type === 'gather') { const amounts = gatherAmounts(forecast, intent.payload), node = requireWorld(forecast).nodes.find(node => node.id === intent.payload.nodeId)!; for (const amount of amounts) node.inventory.find(entry => entry.itemId === amount.itemId)!.quantity -= amount.quantity; grantItems(forecast, future, amounts, `forecast:${intent.id}`); }
-    if (intent.type === 'recipe') { const recipe = world.rules.recipes.find(recipe => recipe.id === intent.payload.ruleId)!; removeItems(future, recipe.inputs); if (!recipe.durationRounds) grantItems(forecast, future, recipe.outputs, `forecast:${intent.id}`); }
+    if (intent.type === 'recipe') { const recipe = world.rules.recipes.find(recipe => recipe.id === intent.payload.ruleId)!; removeItems(future, recipe.inputs); if (intent.payload.npcId) { const merchant = forecast.actors.find(actor => actor.id === intent.payload.npcId)!; removeItems(merchant, recipe.outputs); grantItems(forecast, merchant, recipe.inputs, `forecast-trade:${intent.id}`); } if (!recipe.durationRounds) grantItems(forecast, future, recipe.outputs, `forecast:${intent.id}`); }
     for (const claim of resourceClaims(state, intent)) if (claim.key.startsWith(`actor:${actor.id}:resource:`)) { const resource = future.resources.find(resource => claim.key === `actor:${actor.id}:resource:${resource.id}`)!; resource.current -= claim.quantity; }
   }
 }
 function npcPayload(actor: Record<string, any>, ownerId: string, actorId: string): Record<string, any> {
   assert(actor.kind === undefined || ['monster', 'companion'].includes(actor.kind), 'WORLD_NPC', '世界提案只能创建NPC、怪物或随从，不能生成主角席位');
   const npc: Record<string, any> = { ...actor, id: actorId, ownerId, kind: actor.kind || 'monster', profile: actor.profile || 'free', draft: false, choices: typeof actor.choices?.team === 'string' ? { team: actor.choices.team } : {} };
-  for (const key of ['registration', 'requestedBy', 'publicGroups', 'knownEntries', 'growth', 'world', 'mode', 'owner', 'governance', 'grants']) delete npc[key];
+  for (const key of ['registration', 'requestedBy', 'publicGroups', 'knownEntries', 'growth', 'world', 'mode', 'owner', 'governance', 'grants', 'behavior']) delete npc[key];
   return npc;
 }
 function validateSubmission(state: GameState, draft: WorldDraft, ctx: WorldContext): WorldDraft {
   const published = { ...structuredClone(draft), payload: draftPayload(draft.kind, draft.payload) }, world = requireWorld(state), candidate = structuredClone(state);
-  if (draft.kind === 'actor' || draft.kind === 'scene') executeEngine(candidate, { operationId: `preview:${draft.id}`, expectedRev: state.rev, type: draft.kind === 'actor' ? 'actor.create' : 'scene.update', payload: draft.kind === 'actor' ? npcPayload(object(published.payload.actor), world.ownerId, `preview:${draft.id}`) : published.payload }, ctx);
+  if (draft.kind === 'actor' || draft.kind === 'scene') {
+    const result = executeEngine(candidate, { operationId: `preview:${draft.id}`, expectedRev: state.rev, type: draft.kind === 'actor' ? 'actor.create' : 'scene.update', payload: draft.kind === 'actor' ? npcPayload(object(published.payload.actor), world.ownerId, `preview:${draft.id}`) : published.payload }, ctx);
+    if (draft.kind === 'actor') bindProposedBehavior(result.state, candidate, published.payload);
+  }
   else if (draft.kind !== 'story') configureWorld(candidate, published.payload, ctx);
   return published;
+}
+function bindProposedBehavior(state: GameState, before: GameState, payload: Record<string, any>): void {
+  const behavior = payload.behavior ?? payload.actor?.behavior;
+  if (behavior === undefined) return;
+  const added = state.actors.filter(actor => !before.actors.some(previous => previous.id === actor.id)); assert(added.length === 1, 'WORLD_NPC', 'NPC提案必须恰好创建一个角色');
+  const world = requireWorld(state); world.npcBehaviors = validateBehaviors([...world.npcBehaviors, { ...object(behavior, 'NPC行为'), actorId: added[0].id }], state.actors); validateCatalog(state);
 }
 export function saveIntent(state: GameState, command: Command, member: Member, ctx: WorldContext, forced?: Record<string, any>): void {
   const world = requireWorld(state); assert(world.phase === 'running' && world.round.phase === 'planning', 'WORLD_PHASE', '当前不在回合计划阶段');
@@ -137,6 +152,9 @@ export function saveIntent(state: GameState, command: Command, member: Member, c
 export function executeIntent(input: GameState, intentId: string, ctx: WorldContext): Resolution {
   const state = structuredClone(input), world = requireWorld(state), intent = world.round.intents.find(intent => intent.id === intentId); assert(intent && intent.status === 'approved', 'WORLD_INTENT', '此意图未获批准或已经执行');
   const actor = findActor(state, intent.actorId), spent = micro(world.round.spent[actor.id] || 0);
+  const original = world.round.intents; let actual: number;
+  try { world.round.intents = original.filter(entry => entry.actorId !== actor.id); actual = intentCost(state, actor, intent.type, intent.payload); } finally { world.round.intents = original; }
+  assert(micro(actual) <= micro(intent.cost), 'WORLD_AP_REPRICE', '实际行动费用已超过原保留额度，请在下一轮检查并重新提交；本次未扣费'); intent.cost = actual;
   if (world.rules.energy) assert(spent + micro(intent.cost) <= micro(energyLimits(actor, world).perRound), 'WORLD_ROUND_LIMIT', '本回合支出额度不足');
   spendEnergy(actor, intent.cost); const events: Log = []; let output = state;
   const command: Command = { operationId: intent.id, expectedRev: state.rev, actorId: actor.id, targetIds: intent.targetIds, type: 'action.use', payload: intent.payload };
@@ -197,7 +215,7 @@ export function settleRound(input: GameState, member: Member, ctx: WorldContext)
 export function applyApprovedProposals(input: GameState, round: number, ctx: WorldContext): Resolution {
   let state = input; const events: Log = [];
   for (const proposalId of requireWorld(state).proposals.filter(proposal => proposal.status === 'approved' && (proposal.effectiveRound || Infinity) <= round).map(proposal => proposal.id)) {
-    const candidate = structuredClone(state), world = requireWorld(candidate), proposal = world.proposals.find(proposal => proposal.id === proposalId)!;
+    const previousState = state, eventCount = events.length, candidate = structuredClone(state), world = requireWorld(candidate), proposal = world.proposals.find(proposal => proposal.id === proposalId)!;
     try {
       const payload = draftPayload(proposal.kind, proposal.payload);
       if (proposal.kind === 'scene' || proposal.kind === 'actor') {
@@ -208,10 +226,11 @@ export function applyApprovedProposals(input: GameState, round: number, ctx: Wor
         }
         const command: Command = { operationId: `adopt:${proposal.id}`, expectedRev: state.rev, type: proposal.kind === 'scene' ? 'scene.update' : 'actor.create', payload: npc || payload };
         const result = executeEngine(candidate, command, ctx); state = result.state; events.push(...result.events);
+        if (actor) bindProposedBehavior(state, candidate, payload);
         if (actor) { const previous = new Set(candidate.actors.map(actor => actor.id)); for (const created of state.actors.filter(actor => !previous.has(actor.id))) { reconcileEnergy(created, requireWorld(state), true); requireWorld(state).energyAt[created.id] = ctx.now; } }
       } else { configureWorld(candidate, proposal.kind === 'story' ? { lore: [world.lore, payload.text].filter(Boolean).join('\n\n') } : payload, ctx); state = candidate; }
       const adopted = requireWorld(state).proposals.find(proposal => proposal.id === proposalId)!; adopted.status = 'applied'; adopted.result = `已于第${round}回合生效`; note(events, 'proposal-applied', `提案「${adopted.title}」已在新回合生效`);
-    } catch (error) { const failed = requireWorld(state).proposals.find(proposal => proposal.id === proposalId)!; failed.status = 'conflict'; failed.result = error instanceof Error ? error.message : String(error); note(events, 'proposal-conflict', `提案「${failed.title}」因世界变化未能采用：${failed.result}`); }
+    } catch (error) { state = previousState; events.length = eventCount; const failed = requireWorld(state).proposals.find(proposal => proposal.id === proposalId)!; failed.status = 'conflict'; failed.result = error instanceof Error ? error.message : String(error); note(events, 'proposal-conflict', `提案「${failed.title}」因世界变化未能采用：${failed.result}`); }
   }
   return { state, events };
 }

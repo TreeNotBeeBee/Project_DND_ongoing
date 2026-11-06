@@ -1,5 +1,5 @@
 import { ABILITIES, type Actor, type GameState } from '../shared/model';
-import type { GrowthTarget, GrowthTrackRule, WorldRules } from '../shared/world';
+import type { GrowthTarget, GrowthTrackRule, WorldRules, WorldState } from '../shared/world';
 import { assert } from '../engine/dice';
 import { decimal, finite, micro, natural } from './fixed';
 import { reconcileEnergy, worldItemBonuses } from './energy';
@@ -57,7 +57,7 @@ export function reconcileWorldBonuses(state: GameState): void {
     if (world.phase === 'running') reconcileEnergy(actor, world);
   }
 }
-export function spendGrowth(actor: Actor, rules: WorldRules, trackId: string, target: GrowthTarget, points: number): void {
+export function spendGrowth(actor: Actor, rules: WorldRules, trackId: string, target: GrowthTarget, points: number, world?: WorldState): void {
   assert(actor.profile === 'free', 'WORLD_GROWTH', '此成长系统仅适用于自由规则角色');
   const rule = rules.growth.tracks.find(track => track.id === trackId), upgrade = rule?.upgrades.find(upgrade => upgrade.target === target), progress = actor.growth?.tracks[trackId];
   assert(rule && upgrade && progress, 'WORLD_TRACK', '成长轨道或加点规则不存在');
@@ -68,6 +68,12 @@ export function spendGrowth(actor: Actor, rules: WorldRules, trackId: string, ta
     const current = micro(actor.growth!.bonuses[target] || 0, target, true), increase = BigInt(micro(upgrade.amount)) * BigInt(points / upgrade.cost);
     assert(increase <= BigInt(Number.MAX_SAFE_INTEGER), 'WORLD_GROWTH', '成长数值超出安全范围'); value = decimal(current + Number(increase));
   } else value = finite((actor.growth!.bonuses[target] || 0) + upgrade.amount * (points / upgrade.cost), target, true);
-  assert(upgrade.max === undefined || value <= upgrade.max, 'WORLD_GROWTH_CAP', '本项成长已超过规则上限');
+  const previous = (actor.choices?._worldAppliedBonuses || {}) as Partial<Record<GrowthTarget, number>>;
+  const increase = value - (actor.growth!.bonuses[target] || 0);
+  const existingBonus = actor.growth!.bonuses[target] || 0;
+  const base = ABILITIES.includes(target as any) ? actor.abilities[target as keyof Actor['abilities']] - (previous[target] || 0) + existingBonus : target === 'hp' ? (actor.manual?.maxHp ?? actor.hp.max) - (previous.hp || 0) + existingBonus : target === 'mp' || target === 'stamina' ? (actor.resources.find(resource => resource.id === target)?.max || 0) - (previous[target] || 0) + existingBonus : (target === 'ap.maximum' ? rules.energy?.maximum : target === 'ap.recovery' ? rules.energy?.recovery : rules.energy?.perRound) ?? 0;
+  const finalValue = target.startsWith('ap.') ? base + value : base + increase;
+  assert(upgrade.max === undefined || finalValue <= upgrade.max, 'WORLD_GROWTH_CAP', '成长后的基础最终值将超过规则上限（装备临时加成不占成长上限）');
+  if (target === 'ap.maximum') assert(finalValue <= 100, 'WORLD_GROWTH_CAP', '成长后的基础行动力上限不能超过100');
   actor.growth!.bonuses[target] = value; progress.points -= points;
 }

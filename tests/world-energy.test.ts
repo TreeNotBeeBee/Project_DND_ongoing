@@ -9,7 +9,7 @@ import { validateRules } from '../src/world/validation';
 
 function fixture() {
   const state = createGameState('World'); state.world = newWorld('owner', 'co-create'); state.world.phase = 'running';
-  state.world.rules = validateRules({energy:{maximum:100,perRound:10,recoveryMode:'hour',recovery:0.000001},costs:{action:0.000001},conflict:{kind:'random'},growth:{kind:'global',tracks:[{id:'main',name:'成长',curve:[10,20],pointsPerLevel:2,upgrades:[{target:'hp',cost:2,amount:5,max:20},{target:'ap.maximum',cost:1,amount:10}]}]},recipes:[]});
+  state.world.rules = validateRules({energy:{maximum:100,perRound:10,recoveryMode:'hour',recovery:0.000001},costs:{action:0.000001},conflict:{kind:'random'},growth:{kind:'global',tracks:[{id:'main',name:'成长',curve:[10,20],pointsPerLevel:2,upgrades:[{target:'hp',cost:2,amount:5,max:40},{target:'ap.maximum',cost:1,amount:10}]}]},recipes:[]});
   const actor = createActor({id:'hero',ownerId:'p',name:'Free',kind:'monster',hp:{max:20,current:10,temp:0},draft:false}); actor.kind='hero';actor.profile='free';actor.registration='registered';actor.manual={maxHp:20,ac:10,speed:30,proficiency:2};state.actors.push(actor);reconcileEnergy(actor,state.world,true);state.world.energyAt[actor.id]=1_000;
   return {state,actor,world:state.world};
 }
@@ -37,4 +37,7 @@ test('negative free attributes and zero resource pools remain legal; maximum cha
 });
 test('rule validation rejects malformed tracks, AP precision, overflow and resource AP double charges',()=>{
  const {world}=fixture();for(const mutate of [(r:any)=>r.energy.maximum=101,(r:any)=>r.costs.action=1e-7,(r:any)=>r.growth.tracks[0].curve=[],(r:any)=>r.growth.tracks[0].upgrades[0].cost=0]){const rules=structuredClone(world.rules);mutate(rules);assert.throws(()=>validateRules(rules));}
+});
+test('upgrade maxima bound the final base value, exclude temporary equipment, and never allow AP growth above 100',()=>{
+ const {state,actor,world}=fixture();world.rules.growth.tracks[0].upgrades.push({target:'str',cost:1,amount:1,max:15});world.items=[{id:'belt',name:'Belt',description:'',bonuses:{str:10}}];actor.inventory.push({id:'belt',contentId:'world:belt',name:'Belt',quantity:1,equipped:true});reconcileWorldBonuses(state);assert.equal(actor.abilities.str,20);grantExperience(actor,world.rules,[{trackId:'main',amount:100}]);spendGrowth(actor,world.rules,'main','str',5,world);reconcileWorldBonuses(state);assert.equal(actor.abilities.str,25);const points=actor.growth!.tracks.main.points;assert.throws(()=>spendGrowth(actor,world.rules,'main','str',1,world));assert.equal(actor.growth!.tracks.main.points,points);assert.throws(()=>spendGrowth(actor,world.rules,'main','ap.maximum',1,world));
 });

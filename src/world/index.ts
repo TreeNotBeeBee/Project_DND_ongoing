@@ -66,7 +66,7 @@ export function resolveWorldCommand(input: GameState, command: Command, member: 
       const actor = state.actors.find(actor => actor.id === (command.actorId || p.actorId)); assert(actor, 'WORLD_ACTOR', '成长角色不存在');
       const delegated = world.governance.system === 'dictatorship' && hasCapability(world, member.id, 'manage.characters');
       assert(actor.ownerId === member.id || member.id === world.ownerId && (world.mode === 'gm' || world.phase === 'setup') || delegated, 'WORLD_PERMISSION', '只能按合法规则为自己加点；民主运行中房主不能直接替他人修改成长');
-      spendGrowth(actor, world.rules, id(p.trackId), p.target as GrowthTarget, p.points); reconcileWorldBonuses(state); note(events, 'world-growth', `${actor.name}已按已采用规则消费成长点`, actor.id); break;
+      spendGrowth(actor, world.rules, id(p.trackId), p.target as GrowthTarget, p.points, world); reconcileWorldBonuses(state); note(events, 'world-growth', `${actor.name}已按已采用规则消费成长点`, actor.id); break;
     }
     case 'inventory.equip': {
       const actor = state.actors.find(actor => actor.id === command.actorId), item = actor?.inventory.find(item => item.id === p.itemId); assert(actor && item, 'WORLD_ITEM', '角色或装备不存在');
