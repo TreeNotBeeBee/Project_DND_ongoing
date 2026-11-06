@@ -134,3 +134,19 @@ test('linking a legacy identity closes its pre-account WebSocket before any late
   assert.equal((await legacy.request('/api/state')).status, 401);
   assert.equal((await account.request('/api/state')).data.session.member.id, old.data.session.member.id);
 });
+
+test('owner invitation uses the current public tunnel and QR after login without carrying the host token', async t => {
+  const f = await setup(t), owner = f.client(), player = f.client();
+  await owner.request('/api/account/register', { username: 'invite-owner', password: 'owner-password', hostToken: 'host-local-only' });
+  const created = await owner.request('/api/campaigns', { name: '邀请测试', mode: 'ai' });
+  await player.request('/api/account/register', { username: 'invite-player', password: 'player-password' });
+  await player.request('/api/join', { inviteCode: created.data.inviteCode });
+  assert.equal((await player.request('/api/invitation')).status, 403);
+  f.runtime.setPublicOrigin('https://ai-invitation-test.trycloudflare.com');
+  const invite = await owner.request('/api/invitation');
+  assert.equal(invite.status, 200); assert.equal(invite.data.isPublic, true);
+  assert.equal(invite.data.url, 'https://ai-invitation-test.trycloudflare.com/?invite=' + created.data.inviteCode);
+  assert.match(invite.data.qrDataUrl, /^data:image\/png;base64,/); assert.equal(invite.data.url.includes('hostToken'), false);
+  f.runtime.setPublicOrigin(null, 'QA failure');
+  const local = await owner.request('/api/invitation'); assert.equal(local.data.isPublic, false); assert.equal(local.data.tunnelStatus, 'error'); assert.match(local.data.url, /^http:\/\/localhost:/);
+});

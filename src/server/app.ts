@@ -217,6 +217,13 @@ export async function createApplication(options: ServerOptions) {
   });
   router.get('/api/health', ctx => sendJson(ctx, { ok: true, version: CODE_VERSION, serverId: storage.serverId }));
   router.get('/api/host', async (ctx: any) => { hostAuth(ctx); sendJson(ctx, { ...tunnelStatus, qrDataUrl: publicOrigin ? await QRCode.toDataURL(publicOrigin, { width: 256, margin: 2 }) : null, localUrl, serverId: storage.serverId, version: CODE_VERSION }); });
+  router.get('/api/invitation', async (ctx: any) => {
+    const session = auth(ctx), row = campaign(session.campaignId), state = json(row.state) as GameState;
+    if (state.world ? state.world.ownerId !== session.member.id : session.member.role !== 'gm') throw new ApiError(403, 'owner_only', '只有房主可以查看邀请入口');
+    limiter.check(`invitation:${session.member.id}`, 60);
+    const url = new URL('/?invite=' + encodeURIComponent(row.invite_code), publicOrigin || localUrl || 'http://localhost:8080').href;
+    sendJson(ctx, { inviteCode: row.invite_code, url, qrDataUrl: await QRCode.toDataURL(url, { width: 256, margin: 2 }), tunnelStatus: tunnelStatus.status, isPublic: Boolean(publicOrigin) });
+  });
   router.get('/api/account', (ctx: any) => {
     const session = sessionByToken(cookieToken(ctx), ctx.cookies.get(ACCOUNT_COOKIE) || '');
     const linked = session && db.prepare('SELECT 1 FROM account_members WHERE member_id=?').get(session.member.id);
