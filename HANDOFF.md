@@ -33,6 +33,7 @@
 | `src/server/ai-display-projection.ts` | 绕开原生规则引擎的 AI 世界快照 |
 | `src/client/WorldApp.tsx`、`transport.ts` | 应用分流、账号 / 世界切换、可靠提交 |
 | `src/client/WorldHome.tsx` | 登录后的三项主菜单与创建分类 |
+| `src/client/AIWorld.tsx`、`AIWorkbench.tsx`、`AIFields.tsx` | AI 世界、五组初始化、行为输入、资料弹窗和字段展示 |
 | `src/client/AIPlayerMap.tsx`、`ai-map-geometry.ts` | AI 地图、固定大小头像、相机与点击区域 |
 | `src/ai/protocol.ts`、`src/engine/`、`src/world/` | 保留的旧 v1 协议、真人 / 自由模式规则；不用于新 v2 数值解释 |
 
@@ -58,6 +59,7 @@ npm run build
 3. 验证旧向导失败的具体表单与待处理队列状态。纯函数曾验证合法的 Light + Sacred Flame + Cure Wounds 可通过，尚不能据截图断言服务器校验本身必然错误。
 4. 真人主持与自由共创的专属界面、复杂 SRD 自动化、多场景与完整照明等仍是独立后续任务。覆盖矩阵 `2017` 条、`662 unsupported` 是旧规则目录状态，不表示 v2 需要本地实现这些运算。
 5. 防提示词注入依赖权限隔离与清晰数据边界，不能承诺外部 AI 永不出错。若以后接 API，再单独设计秘密上下文、工具权限与结构化返回。
+6. 中英文偏好已覆盖新主页；AI 与旧世界中仍有中文固定文案，可继续统一翻译。账号忘记密码的可视化恢复流程尚未实现；不要丢失私下保管的数据库备份。
 
 ## 数据回退
 

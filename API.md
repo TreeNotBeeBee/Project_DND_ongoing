@@ -9,6 +9,7 @@ New AI worlds use the independent AI display contract below. Native character an
 - `GET /api/worlds` returns only the account's authorized worlds as `{worlds:[{id,name,mode,phase,role,isOwner,updatedAt}]}`. `POST /api/worlds/enter {worldId}` returns `Snapshot`; `/api/worlds/leave {}` clears the world session and retains the account.
 - Authenticated `POST /api/campaigns` accepts `{name,mode,governance?,freedom?:'A'|'B'|'C'}`. A new account-owned AI world defaults to display v2. Invitations remain `/api/join {inviteCode,name?}`; repeat joining uses the same member ID.
 - Cookies `jige_account` and `jige_session` are HttpOnly/SameSite=Strict and Secure on the active public tunnel. A linked member requires its matching account cookie, including WSS handshakes. Changing account or world revokes the old world session.
+- Owner `GET /api/invitation` returns `{inviteCode,url,qrDataUrl,tunnelStatus,isPublic}` using the exact active public tunnel or local fallback. It works after account login without the transient machine host token.
 
 ## AI-authoritative display protocol v2
 
@@ -24,7 +25,7 @@ New AI worlds use the independent AI display contract below. Native character an
 
 Initialization editions are `5e2014` and `5e2024` metadata. Unknown editions are reported; no silent conversion occurs. Field source labels (`module`, `ai`, `unknown`) are declarations. Freedom A holds AI additions for individual acceptance or blank values; B/C require no individual acceptance. Schema limits reject forbidden control characters, excessive nesting/volume and invalid fields, not topic words or unreasonable game numbers.
 
-## World contract (v2)
+## Native world contract (human GM, free worlds and legacy AI v1)
 
 - POST `/api/campaigns` `{name,gmName,hostToken,mode:'gm'|'ai'|'co-create',governance?:{system:'democracy'|'dictatorship',ownerVeto:boolean}}`. Mode, owner and governance are fixed at creation. Omission of mode is reserved for legacy compatibility.
 - `Snapshot` includes `world`, visible `tokens`, minimal `offers`, opted-in public `profiles`, and server-derived `actorViews` including effective `energyLimits`. Non-owners receive only their full registered hero / controlled companion cards. GM-only effects and choices remain filtered even on their own card.
