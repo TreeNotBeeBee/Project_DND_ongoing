@@ -230,11 +230,13 @@ export async function createApplication(options: ServerOptions) {
     const session = auth(ctx), body = object(ctx.request.body); limiter.check(`ai-export:${session.member.id}`, 30);
     const result = db.transaction(() => {
       const row = campaign(session.campaignId), before = json(row.state) as GameState; aiOwner(session, before);
-      const exported = createAiExchange(before, body.kind as ExchangeKind, { ...aiContext(row.id, session.member), exchangeId: body.exchangeId });
+      const advanced = advanceWorldTime(before, worldContext(row.id));
+      if(advanced.events.length)advanced.state.world!.gameplayRev++;
+      const exported = createAiExchange(advanced.state, body.kind as ExchangeKind, { ...aiContext(row.id, session.member), exchangeId: body.exchangeId });
       // Exchanging context changes the server receipt, not the gameplay revision echoed by the AI.
       exported.state.rev = before.rev + 1;
       const operationId = `ai-export:${exported.packet.exchangeId}`;
-      const appended = appendEvents(before, exported.state, [{ type: 'ai.export', message: '房主已导出AI交换上下文', gmOnly: true }], operationId, row.event_sequence);
+      const appended = appendEvents(before, exported.state, [...advanced.events,{ type: 'ai.export', message: '房主已导出AI交换上下文', gmOnly: true }], operationId, row.event_sequence);
       persistState(row.id, exported.state, appended.sequence);
       db.prepare('INSERT INTO operations(campaign_id,member_id,operation_id,command_type,command_json,before_state,events,created_at) VALUES (?,?,?,?,?,?,?,?)').run(row.id, session.member.id, operationId, 'ai.export', JSON.stringify({ kind: body.kind }), JSON.stringify(before), JSON.stringify(appended.events), new Date().toISOString());
       return { packet: exported.packet, schema: exported.schema, prompt: exported.prompt };
@@ -244,14 +246,15 @@ export async function createApplication(options: ServerOptions) {
   router.post('/api/ai/preview', (ctx: any) => {
     const session = auth(ctx), state = json(campaign(session.campaignId).state) as GameState; aiOwner(session, state);
     limiter.check(`ai-preview:${session.member.id}`, 60);
-    sendJson(ctx, previewAiPacket(state, object(ctx.request.body).packet, aiContext(session.campaignId, session.member)));
+    sendJson(ctx, previewAiPacket(advanceWorldTime(state,worldContext(session.campaignId)).state, object(ctx.request.body).packet, aiContext(session.campaignId, session.member)));
   });
   router.post('/api/command', (ctx: any) => {
     const session = auth(ctx); limiter.check(`command:${session.member.id}`, 180);
     const command = copy(object(ctx.request.body)) as Command;
     let result: {events:ResultEvent[];duplicate?:boolean};
     result = db.transaction(() => {
-      const row = campaign(session.campaignId); const state: GameState = json(row.state);
+      const row = campaign(session.campaignId), persistedState = json(row.state) as GameState;
+      let state = persistedState;
       // Check a committed operation before revision and ownership: retries must return its exact result.
       if (typeof command.operationId === 'string') {
         const committed: any = db.prepare('SELECT events,command_json FROM operations WHERE campaign_id=? AND member_id=? AND operation_id=?').get(row.id,session.member.id,command.operationId);
@@ -260,6 +263,8 @@ export async function createApplication(options: ServerOptions) {
           return {events:json(committed.events),duplicate:true};
         }
       }
+      const advanced = state.world && command.type !== 'gm.undo' ? advanceWorldTime(state,worldContext(session.campaignId)) : {state,events:[]};
+      state = advanced.state;
       const originalCommand = copy(command);
       if (state.world) {
         validateWorldEnvelope(command);
@@ -337,11 +342,11 @@ export async function createApplication(options: ServerOptions) {
         if(next.actors.length>500)throw new ApiError(400,'actor_limit','单战役角色数量超过 500');
         validateActorOwnership(next,roles);
       }
-      if (state.world && next.world && !['profile.update','draft.save','draft.delete','vote.cast','vote.preference','governance.grant'].includes(command.type) && !(command.type === 'ai.apply' && !drafts.length)) next.world.gameplayRev = state.world.gameplayRev + 1;
+      if (state.world && next.world && (advanced.events.length || !['profile.update','draft.save','draft.delete','vote.cast','vote.preference','governance.grant'].includes(command.type) && !(command.type === 'ai.apply' && !drafts.length))) next.world.gameplayRev = state.world.gameplayRev + 1;
       next.id = state.id; next.rev = state.rev + 1;
-      const appended = appendEvents(state,next,drafts,command.operationId,row.event_sequence);
+      const appended = appendEvents(persistedState,next,[...advanced.events,...drafts],command.operationId,row.event_sequence);
       persistState(row.id,next,appended.sequence);
-      db.prepare('INSERT INTO operations(campaign_id,member_id,operation_id,command_type,command_json,before_state,events,created_at) VALUES (?,?,?,?,?,?,?,?)').run(row.id,session.member.id,command.operationId,command.type,JSON.stringify(originalCommand),JSON.stringify(state),JSON.stringify(appended.events),new Date().toISOString());
+      db.prepare('INSERT INTO operations(campaign_id,member_id,operation_id,command_type,command_json,before_state,events,created_at) VALUES (?,?,?,?,?,?,?,?)').run(row.id,session.member.id,command.operationId,command.type,JSON.stringify(originalCommand),JSON.stringify(persistedState),JSON.stringify(appended.events),new Date().toISOString());
       return {events:appended.events};
     })();
     const snap = snapshot(session);

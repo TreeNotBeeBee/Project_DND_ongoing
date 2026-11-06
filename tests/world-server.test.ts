@@ -171,3 +171,13 @@ test('real AI room completes rounds with the selected dice source and preserves 
     await f.owner.command('round.start');
   }
 });
+
+test('editing a card from an hourly-recovered snapshot never credits the same hour twice',async t=>{
+  const f=await setup(t);await f.create();const player=await f.joinPlayer('小时恢复');const actorId=await f.register(player);
+  await f.owner.command('world.configure',{rules:{...structuredClone(DEFAULT_RULES),energy:{maximum:10,initial:0,perRound:10,recoveryMode:'hour',recovery:1}}});await f.owner.command('world.start');
+  f.advance(3_600_000);const recovered=(await f.owner.state()).state.actors.find(a=>a.id===actorId)!;assert.equal(recovered.resources.find(r=>r.id==='ap')!.current,1);
+  await f.owner.command('character.patch',{actorId,patch:{manual:{maxHp:15},resources:recovered.resources}});
+  assert.equal((await player.state()).state.actors[0].resources.find(r=>r.id==='ap')!.current,1);
+  await f.restart();assert.equal((await player.state()).state.actors[0].resources.find(r=>r.id==='ap')!.current,1);
+  f.advance(3_600_000);assert.equal((await player.state()).state.actors[0].resources.find(r=>r.id==='ap')!.current,2);
+});
