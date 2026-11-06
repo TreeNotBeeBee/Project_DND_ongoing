@@ -21,6 +21,7 @@ export const isWorldCommand = (type: string): boolean => commands.has(type);
 export function resolveWorldCommand(input: GameState, command: Command, member: Member, ctx: WorldContext): Resolution {
   assert(isWorldCommand(command.type), 'WORLD_COMMAND', '未知世界命令');
   assert(ctx.members.some(entry => entry.id === member.id), 'WORLD_MEMBER', '操作者不属于此房间');
+  assert(!input.paused || !['world.start','round.start','round.settle','intent.review','growth.spend'].includes(command.type), 'WORLD_PAUSED', '世界已暂停，请等待房主继续后执行；草稿、投票与管理纠正仍可使用');
   assertWorldIdentities(input);
   const advanced = advanceWorldTime(input, ctx); let state = advanced.state; const events = advanced.events, world = requireWorld(state), p = object(command.payload || {});
   if (handleGovernance(state, command, member, ctx, events)) return { state, events };

@@ -300,7 +300,7 @@ export async function createApplication(options: ServerOptions) {
         let resolution: any;
         try {
           if (modern && isCharacterCommand(command.type)) resolution = resolveCharacterCommand(state, command, session.member, worldContext(session.campaignId).members, engine, clock());
-          else if (modern && command.type === 'ai.apply') { aiOwner(session, state); resolution = applyAiPacket(state, command.payload?.packet, aiContext(session.campaignId, session.member)); }
+          else if (modern && command.type === 'ai.apply') { aiOwner(session, state); if(state.paused)throw new ApiError(400,'WORLD_PAUSED','世界已暂停，请房主继续后再采用AI决策'); resolution = applyAiPacket(state, command.payload?.packet, aiContext(session.campaignId, session.member)); }
           else if (modern && command.type === 'ai.configure') {
             aiOwner(session, state);
             if (!['program','ai'].includes(String(command.payload?.diceSource)) || Object.keys(command.payload || {}).some(key => key !== 'diceSource')) throw new ApiError(400, 'ai_dice_source', '请选择程序或AI骰源');

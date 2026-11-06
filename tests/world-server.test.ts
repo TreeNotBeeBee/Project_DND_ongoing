@@ -88,6 +88,9 @@ test('unified-round settlement is idempotent across ACK replay and server restar
   await player.command('intent.save', { intent: { actorId, type: 'move', payload: { path: [destination] } } });
   assert.equal((await player.state()).state.actors[0].resources.find(r => r.id === 'ap')!.current, 10);
   await player.command('turn.end');
+  await f.owner.command('gm.pause',{paused:true});await f.owner.command('round.settle',{},undefined,400);
+  assert.equal((await player.state()).world!.round.intents[0].status,'approved');assert.equal((await player.state()).state.actors[0].resources.find(r=>r.id==='ap')!.current,10);
+  await f.owner.command('gm.pause',{paused:false});
   const settled = await f.owner.command('round.settle');
   assert.deepEqual((await player.state()).state.actors[0].position, destination);
   assert.equal((await player.state()).state.actors[0].resources.find(r => r.id === 'ap')!.current, 9.75);
