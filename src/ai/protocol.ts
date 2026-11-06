@@ -33,7 +33,7 @@ function endedParticipants(state: GameState, ctx: AiContext): void {
 }
 function note(log: Log, type: string, message: string, actorId?: string) { log.push({ type, actorId, message, source: 'jigerpg-ai/v1' }); }
 const safeScene = (scene: GameState['scene']) => ({ width: scene.width, height: scene.height, gridFeet: scene.gridFeet, walls: scene.walls, terrain: scene.terrain, fog: scene.fog });
-const intentPayloadKeys = new Set(['actionId', 'origin', 'path', 'options', 'slotLevel', 'commandType', 'itemId', 'equipped', 'ruleId', 'nodeId', 'items', 'text']);
+const intentPayloadKeys = new Set(['actionId', 'origin', 'path', 'options', 'slotLevel', 'commandType', 'itemId', 'equipped', 'attuned', 'kind', 'hitDice', 'ruleId', 'nodeId', 'items', 'text']);
 function contextPayload(state: GameState, ctx: AiContext): Record<string, unknown> {
   const world = state.world!;
   return {
@@ -121,14 +121,14 @@ function gameCommand(input: GameState, command: Command, ctx: AiContext, planned
     if (patch.manual) patch.manual = { ...actor!.manual, ...patch.manual };
     if (patch.hp) patch.hp = { ...actor!.hp, ...patch.hp };
     if (patch.resources && previousAp && !patch.resources.some((resource: any) => resource.id === 'ap')) patch.resources.push(structuredClone(previousAp));
-    Object.assign(actor!, patch); actor!.hp.max = actor!.manual!.maxHp; actor!.hp.current = Math.min(actor!.hp.current, actor!.hp.max);
+    Object.assign(actor!, patch); actor!.hp.max = ctx.engine.deriveActor?.(actor!).maxHp ?? actor!.manual!.maxHp; actor!.hp.current = Math.min(actor!.hp.current, actor!.hp.max);
     const problems = ctx.engine.validateActor(actor!); assert(!problems.length, 'AI_CHARACTER', problems.join('; '));
     validateTokenPosition(state.scene, actor!, actor!.position, state.actors.filter(other => other.registration === undefined || other.registration === 'registered'));
   } else if (state.world!.mode === 'ai' && state.world!.phase === 'running' && state.world!.rules.energy && actor && actor.kind !== 'hero' && ordinaryCommands.has(command.type)) {
     assert(['planning', 'settling'].includes(state.world!.round.phase), 'AI_PHASE', 'Ordinary NPC actions require an open world round');
     const type = command.type === 'actor.move' ? 'move' : 'action', intentId = `ai-npc:${command.operationId}`;
     assert(!state.world!.round.intents.some(intent => intent.id === intentId), 'AI_INTENT', 'This NPC action was already executed');
-    const payload = command.type === 'inventory.equip' ? { ...p, commandType: 'inventory.equip' } : p;
+    const payload = ['action.use', 'actor.move'].includes(command.type) ? p : { ...p, commandType: command.type };
     state.world!.round.intents.push({ id: intentId, actorId: actor.id, memberId: actor.ownerId, type, payload, targetIds: command.targetIds || [], cost: intentCost(state, actor, type, payload), round: state.world!.round.number, status: 'approved' });
     return executeIntent(state, intentId, { ...ctx, resolveEngine: (working, engineCommand, dice) => ctx.resolveEngine(working, { ...command, operationId: engineCommand.operationId, expectedRev: working.rev }, dice) });
   } else return executeEngine(state, command, ctx);
@@ -183,7 +183,7 @@ function inspect(input: GameState, packet: AiReply, ctx: AiContext): Receipt | u
       const intent = input.world!.round.intents.find(intent => intent.id === step.intentId); assert(intent && ['planned', 'approved'].includes(intent.status) && !reviewed.has(intent.id), 'AI_INTENT', 'Intent is missing, already resolved, or decided twice');
       assert(input.world!.round.ended.includes(intent.memberId), 'AI_TURN_OPEN', 'AI cannot execute an intent before its owner ends the turn');
       assert(step.approve || !step.rollId, 'AI_DICE_USAGE', 'Rejected intents cannot consume dice'); reviewed.add(intent.id);
-      if (step.approve && intent.type === 'action') checkedCommand(input, { type: intent.payload.commandType === 'inventory.equip' ? 'inventory.equip' : 'action.use', actorId: intent.actorId, targetIds: intent.targetIds, payload: Object.fromEntries(Object.entries(intent.payload).filter(([key]) => key !== 'commandType')) } as any, false, ctx, true);
+      if (step.approve && intent.type === 'action') checkedCommand(input, { type: String(intent.payload.commandType || 'action.use'), actorId: intent.actorId, targetIds: intent.targetIds, payload: Object.fromEntries(Object.entries(intent.payload).filter(([key]) => key !== 'commandType')) } as any, false, ctx, true);
     }
     if (step.type === 'roll') rollExpression(step.expression, () => 1);
     if ('rollId' in step && step.rollId && input.world!.ai.diceSource === 'ai') { assert(!used.has(step.rollId) && pools.some(roll => roll.id === step.rollId), 'AI_DICE_ID', 'Every AI roll reference must exist and have one purpose'); used.add(step.rollId); }

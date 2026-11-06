@@ -79,7 +79,7 @@
 | `nodes` | `[{id,name,position,inventory:[{itemId,quantity}],hidden?}]` |
 | `npcBehaviors` | `[{actorId,kind:"idle"|"patrol"|"hostile"|"trade"|"event",waypoints?,targetKinds?,actionId?,ruleId?,trigger?}]` |
 
-AI 回合只执行回复包内的明确 NPC 行动，不会在回合结束时再运行一遍程序 NPC 策略。成长 `upgrades.max` 限制该项累计加成，不是角色最终属性值。
+AI 回合只执行回复包内的明确 NPC 行动，不会在回合结束时再运行一遍程序 NPC 策略。成长 `upgrades.max` 限制最终基础值，不包含临时装备加成。
 
 ## 决定步骤与裁定边界
 
@@ -114,7 +114,9 @@ AI 回合只执行回复包内的明确 NPC 行动，不会在回合结束时再
 | `effect.add` / `effect.remove` | `{effect:{name,condition,duration?}}` / `{effectId}` |
 | `choice.resolve` | `choiceId,optionId,ruling?`；不能替玩家选择反应，仅可兑现玩家已明确选择但等待 AI 补骰的同一个选项 |
 
-在配置了 AP 的运行世界中，主角的普通行动、移动、装备切换必须通过玩家意图结算。直接命令不能绕过 AP；现有意图尚未提供休息、饮用物品、死亡豁免类型，这三类主角直接命令也会明确拒绝。NPC 的明确普通命令转换为受信任系统意图，按行动/移动成本扣费，并计入每轮额度。外部裁定用来表达陷阱、环境、奖励等具体世界事实，房主应审核其原因，不能把普通行动改写成随意改生命以规避规则。
+在配置了 AP 的运行世界中，主角的普通行动、移动、装备切换、使用物品、休息和死亡豁免必须通过玩家意图结算。直接命令不能绕过 AP。后三种使用 `intent.type:"action"`，`intent.payload.commandType` 分别为 `inventory.consume`、`actor.rest`、`actor.deathSave`，其余字段与上表相同。消费目标放在意图的 `targetIds`；休息和死亡豁免没有额外目标。短休 `hitDice` 是 `{classId:数量}`，长休不填写生命骰。每角色每世界回合只能进行一次死亡豁免。规划会检查真实物品/生命骰和已有保留，不会在保存意图时真实掷骰或扣费；执行时再通过原生规则支付物品或恢复资源一次。休息经过的世界时间仍须主持人确认，不会把一次回合自动等同于一小时或八小时。
+
+NPC 的明确普通命令转换为受信任系统意图，按行动/移动成本扣费，并计入每轮额度。外部裁定用来表达陷阱、环境、奖励等具体世界事实，房主应审核其原因，不能把普通行动改写成随意改生命以规避规则。
 
 目录中尚未支持的确定性 SRD 机制会阻止执行。需要主持人判断的开放叙事必须由房主审核，不能把 AI 写出的解释视为程序已经实现该规则。
 

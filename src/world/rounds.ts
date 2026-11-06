@@ -12,6 +12,7 @@ import { hasCapability, note, openProposal, registeredMembers, requireCapability
 import { draftPayload, id, object, text, validateBehaviors, validateItems, validateNodes, validateRules } from './validation';
 import { runNpcPolicies } from './npc';
 import { assertWorldIdentities } from './identity';
+import { forecastNativeAction, nativeActionCommand, validateNativeActionPayload } from './native-intents';
 
 type Log = Resolution['events'];
 const pending = (intent: PlannedIntent) => intent.status === 'planned' || intent.status === 'approved';
@@ -44,6 +45,7 @@ export function configureWorld(state: GameState, p: Record<string, any>, ctx: Wo
   validateCatalog(state); reconcileWorldBonuses(state);
 }
 function actionPayload(payload: Record<string, any>, manualRuling: boolean): void {
+  if (validateNativeActionPayload(payload)) return;
   assert(payload.commandType === undefined || payload.commandType === 'inventory.equip', 'WORLD_ACTION', '行动意图只允许动作或装备切换');
   if (payload.commandType === 'inventory.equip') { id(payload.itemId); assert(typeof payload.equipped === 'boolean', 'WORLD_ACTION', '请明确装备或卸下'); }
   else id(payload.actionId);
@@ -87,7 +89,7 @@ export function resourceClaims(state: GameState, intent: PlannedIntent): Claim[]
   if (intent.type === 'action') for (const amount of actor.customActions?.find(action => action.id === payload.actionId)?.costs || []) if (amount.resourceId !== 'ap') claims.push({ key: `actor:${actor.id}:resource:${amount.resourceId}`, quantity: amount.amount, available: actor.resources.find(resource => resource.id === amount.resourceId)?.current || 0 });
   return claims;
 }
-function reserve(state: GameState, candidate: PlannedIntent): void {
+function reserve(state: GameState, candidate: PlannedIntent, ctx: WorldContext): void {
   const world = requireWorld(state), actor = findActor(state, candidate.actorId), intents = world.round.intents.filter(intent => intent.actorId === actor.id && pending(intent));
   const previous = intents.findIndex(intent => intent.id === candidate.id); if (previous >= 0) intents[previous] = candidate; else intents.push(candidate);
   const reserved = intents.reduce((sum, intent) => sum + micro(intent.cost), 0), resource = apResource(actor), spent = micro(world.round.spent[actor.id] || 0);
@@ -95,6 +97,10 @@ function reserve(state: GameState, candidate: PlannedIntent): void {
   if (world.rules.energy) assert(reserved + spent <= micro(energyLimits(actor, world).perRound), 'WORLD_ROUND_LIMIT', '本轮计划超过每回合行动力支出额度');
   const forecast = structuredClone(state), future = findActor(forecast, actor.id);
   for (const intent of intents) {
+    const native = intent.type === 'action' ? forecastNativeAction(forecast, intent, ctx) : undefined;
+    if (native && intent.payload.commandType !== 'actor.deathSave') {
+      future.resources = native.resources; future.inventory = native.inventory; future.hp = native.hp; future.deathSaves = native.deathSaves; future.dead = native.dead; future.effects = native.effects; future.choices = native.choices;
+    }
     for (const claim of resourceClaims(forecast, intent)) assert(claim.quantity <= claim.available, 'WORLD_RESOURCE_RESERVED', '本轮计划重复保留了不足的法力、体力、材料或节点资源');
     if (intent.type === 'move') future.position = structuredClone((intent.payload.path as Actor['position'][]).at(-1)!);
     if (intent.type === 'gather') { const amounts = gatherAmounts(forecast, intent.payload), node = requireWorld(forecast).nodes.find(node => node.id === intent.payload.nodeId)!; for (const amount of amounts) node.inventory.find(entry => entry.itemId === amount.itemId)!.quantity -= amount.quantity; grantItems(forecast, future, amounts, `forecast:${intent.id}`); }
@@ -147,7 +153,7 @@ export function saveIntent(state: GameState, command: Command, member: Member, c
   if (existing) world.round.intents = originalIntents.slice(0, originalIntents.indexOf(existing));
   let cost: number; try { cost = intentCost(state, actor, type, payload); } finally { world.round.intents = originalIntents; }
   const intent: PlannedIntent = { id: existing?.id || `intent:${uid()}`, actorId: actor.id, memberId: actor.ownerId, type, payload, targetIds: Array.isArray(input.targetIds) ? input.targetIds.map(id) : [], cost, round: world.round.number, status: world.mode === 'co-create' ? 'approved' : 'planned' };
-  assert(intent.targetIds.length <= 500 && world.round.intents.length < 2000, 'WORLD_LIMIT', '回合意图或目标数量过多'); reserve(state, intent);
+  assert(intent.targetIds.length <= 500 && world.round.intents.length < 2000, 'WORLD_LIMIT', '回合意图或目标数量过多'); reserve(state, intent, ctx);
   if (existing) world.round.intents[world.round.intents.indexOf(existing)] = intent; else world.round.intents.push(intent);
 }
 export function executeIntent(input: GameState, intentId: string, ctx: WorldContext): Resolution {
@@ -162,7 +168,12 @@ export function executeIntent(input: GameState, intentId: string, ctx: WorldCont
   const command: Command = { operationId: intent.id, expectedRev: state.rev, actorId: actor.id, targetIds: intent.targetIds, type: 'action.use', payload: intent.payload };
   if (intent.type === 'move') { command.type = 'actor.move'; const result = executeEngine(state, command, ctx); output = result.state; events.push(...result.events); }
   else if (intent.type === 'action') {
-    if (intent.payload.commandType === 'inventory.equip') {
+    const native = nativeActionCommand(intent.payload);
+    if (native) {
+      validateNativeActionPayload(intent.payload);
+      if (native.type === 'actor.deathSave') assert(!world.round.intents.some(other => other.id !== intent.id && other.actorId === actor.id && other.payload.commandType === 'actor.deathSave' && other.status === 'executed'), 'WORLD_DEATH_SAVE', '本回合已经进行过死亡豁免');
+      const result = executeEngine(state, { ...command, ...native }, ctx); output = result.state; events.push(...result.events);
+    } else if (intent.payload.commandType === 'inventory.equip') {
       const item = actor.inventory.find(item => item.id === intent.payload.itemId); assert(item, 'WORLD_ITEM', '角色没有这件物品');
       if (item.contentId.startsWith('world:')) equipWorldItem(state, actor, intent.payload);
       else { command.type = 'inventory.equip'; const result = executeEngine(state, command, ctx); output = result.state; events.push(...result.events); }
