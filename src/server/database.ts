@@ -26,7 +26,9 @@ export async function onlineBackup(db: GameDatabase, directory: string, label = 
   try {
     if (check.pragma('integrity_check', { simple: true }) !== 'ok') throw new Error('备份完整性校验失败');
     const serverId = (check.prepare("SELECT value FROM metadata WHERE key='serverId'").get() as any)?.value;
-    await writeFile(`${path}.manifest.json`, JSON.stringify({ format: 'jigerpg-database', backupId:randomUUID(),sha256:await sha256File(path),gitCommit:codeCommit(), schemaVersion: check.pragma('user_version', { simple: true }), codeVersion: CODE_VERSION, serverId, createdAt: new Date().toISOString() }, null, 2), { flag: 'wx' });
+    const databaseGitCommit = (check.prepare("SELECT value FROM metadata WHERE key='gitCommit'").get() as any)?.value;
+    const databaseCodeVersion = (check.prepare("SELECT value FROM metadata WHERE key='codeVersion'").get() as any)?.value;
+    await writeFile(`${path}.manifest.json`, JSON.stringify({ format: 'jigerpg-database', backupId:randomUUID(),sha256:await sha256File(path),gitCommit:codeCommit(), schemaVersion: check.pragma('user_version', { simple: true }), codeVersion: CODE_VERSION, databaseGitCommit, databaseCodeVersion, serverId, createdAt: new Date().toISOString() }, null, 2), { flag: 'wx' });
   } finally { check.close(); }
   return path;
 }

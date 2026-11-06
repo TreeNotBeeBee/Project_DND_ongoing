@@ -92,3 +92,20 @@ test('display JSON rejects technical errors and old command paths atomically whi
   assert.deepEqual(rolled.data.snapshot.world.ai.display.entities.find((entity: any) => entity.id === 'hero').fields.hp.value, { current: -5, max: 2 });
   const full = JSON.stringify((await f.player.request('/api/export')).data); assert.equal(full.includes('MODULE SECRET'), false); assert.equal(full.includes('BACKGROUND SECRET'), false);
 });
+
+test('PC disclosure and avatar changes are bound to the owner, persist separately from AI values, and never publish GM fields', async t => {
+  const f = await setup(t); await initialize(f);
+  await f.player.command('ai.display.select', { actorId: 'hero' });
+  await f.other.command('ai.display.select', { actorId: 'second' });
+  let other = (await f.other.request('/api/state')).data.world.ai.display;
+  assert.deepEqual(other.entities.find((entity: any) => entity.id === 'hero').fields, {});
+  const image = 'data:image/png;base64,iVBORw0KGgo=';
+  const changed = await f.player.command('ai.display.profile', { image, publicFieldIds: ['hp', 'clue'] }); assert.equal(changed.status, 200, JSON.stringify(changed.data));
+  other = (await f.other.request('/api/state')).data.world.ai.display;
+  assert.deepEqual(other.entities.find((entity: any) => entity.id === 'hero').fields.hp.value, { current: -5, max: 2 });
+  assert.equal(other.entities.find((entity: any) => entity.id === 'hero').fields.clue.value, 'ONLY HERO');
+  assert.equal(other.entities.find((entity: any) => entity.id === 'hero').image, image);
+  assert.equal((await f.player.command('ai.display.profile', { actorId: 'second', publicFieldIds: ['hp'] })).status, 400);
+  await f.restart();
+  assert.equal((await f.other.request('/api/state')).data.world.ai.display.entities.find((entity: any) => entity.id === 'hero').image, image);
+});
