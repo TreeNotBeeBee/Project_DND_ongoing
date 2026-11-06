@@ -5,6 +5,8 @@ import type { WorldContext } from '../shared/world';
 export type ExchangeKind = 'initialize' | 'player_selection' | 'turn_context' | 'roll_results';
 export interface AiContext extends WorldContext {
   member: Member;
+  /** Optional source exchange for exporting its actual roll results; the new ID is always program-generated. */
+  exchangeId?: string;
   engine: {
     createActor(input: Partial<Actor> & Record<string, any>): Actor;
     createMonster?(id: string, ownerId: string): Actor;
@@ -14,7 +16,7 @@ export interface AiContext extends WorldContext {
   };
   resolveWorldCommand?: (state: GameState, command: Command, member: Member, context: WorldContext) => Resolution;
 }
-const id = z.string().min(1).max(256);
+const id = z.string().min(1).max(256).regex(/^(?!__proto__$|constructor$|prototype$)[\s\S]+$/);
 const text = z.string().max(100_000);
 const number = z.number().finite().min(-1_000_000).max(1_000_000);
 const nonnegative = number.min(0);
@@ -59,7 +61,7 @@ const stepSchema = z.discriminatedUnion('type', [
   z.strictObject({ id, type: z.literal('ruling'), command: commandSchema }),
   z.strictObject({ id, type: z.literal('roll'), expression: z.string().min(1).max(200), rollId: id }),
 ]);
-const rollSchema = z.strictObject({ id, expression: z.string().min(1).max(200), rolls: z.array(z.number().int().min(1).max(1000)).max(2000), total: number });
+const rollSchema = z.strictObject({ id, expression: z.string().min(1).max(200), rolls: z.array(z.number().int().min(1).max(1000)).max(2000), total: z.number().int().min(-1_000_000_000).max(1_000_000_000) });
 const decisionPayload = z.strictObject({ decisionId: id, narratives: z.array(z.strictObject({ text, actorIds: z.array(id).max(500).optional() })).max(500).optional(), steps: z.array(stepSchema).max(500).optional(), aiRolls: z.array(rollSchema).max(500).optional() });
 const envelope = { protocol: z.literal('jigerpg-ai'), version: z.literal(1), campaignId: id, exchangeId: id, worldRevision: z.number().int().nonnegative() };
 export const aiReplySchema = z.discriminatedUnion('packetType', [
