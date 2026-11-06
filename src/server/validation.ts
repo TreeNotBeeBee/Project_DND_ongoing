@@ -6,6 +6,7 @@ import { micro } from '../world/fixed';
 import { energyLimits } from '../world/energy';
 import { validateCatalog } from '../world/rounds';
 import { assertWorldIdentities } from '../world/identity';
+import { validateAiDisplayState } from '../ai/display';
 
 const id=z.string().min(1).max(512);
 const finite=z.number().finite();
@@ -53,7 +54,7 @@ const world=z.object({
   drafts:z.array(draft).max(10000),
   proposals:z.array(z.object({id,draftId:id,authorId:id,title:text,kind,payload:arbitrary,electorate:strings,ballots:z.record(z.string(),z.object({vote,source:z.enum(['manual','timeout'])})),opensAt:safeInteger,closesAt:safeInteger,status:z.enum(['open','owner-review','approved','rejected','applied','conflict']),ownerDecision:z.boolean().optional(),effectiveRound:safeInteger.optional()}).passthrough()).max(10000),
   timeoutVotes:z.record(z.string(),vote),items:z.array(z.object({id,name:z.string(),description:z.string(),bonuses:growthBonus.optional()})).max(2000),nodes:z.array(z.object({id,name:z.string(),position,inventory:z.array(z.object({itemId:id,quantity:safeInteger.max(1_000_000)})).max(1000),hidden:z.boolean().optional()})).max(1000),npcBehaviors:z.array(npc).max(500),energyAt:z.record(z.string(),safeInteger),jobs:z.array(z.object({id,actorId:id,ruleId:id,completesRound:safeInteger})).max(10000),
-  ai:z.object({diceSource:z.enum(['program','ai']),exchanges:z.array(exchange).max(10000),narratives:z.array(z.object({id,text,actorIds:strings.optional()})).max(10000)})
+  ai:z.object({diceSource:z.enum(['program','ai']),exchanges:z.array(exchange).max(10000),narratives:z.array(z.object({id,text,actorIds:strings.optional()})).max(10000),display:z.unknown().optional()})
 });
 const choice=z.object({id,actorId:id,ownerId:id,kind:z.string(),prompt:text,options:z.array(z.object({id,label:text})).max(2000),payload:arbitrary});
 const state=z.object({
@@ -72,6 +73,7 @@ function unique(values: string[],label: string){invalid(new Set(values).size===v
 function validateWorldReferences(value: GameState): void {
   assertWorldIdentities(value);
   const world=value.world;if(!world)return;
+  if(world.ai.display){invalid(world.mode==='ai','AI展示数据只能在AI世界恢复');world.ai.display=validateAiDisplayState(world.ai.display);invalid(value.actors.length===0&&value.choices.length===0&&!value.combat.active,'AI展示世界不能夹带原生规则角色或战斗');return;}
   validateItems(world.items);validateNodes(world.nodes,world.items);validateBehaviors(world.npcBehaviors,value.actors);validateCatalog(value);
   unique(world.round.participants,'回合参与者');unique(world.round.ended,'结束确认');invalid(world.round.ended.every(memberId=>world.round.participants.includes(memberId)),'结束确认引用了未参加该回合的成员');
   const actors=new Map(value.actors.map(actor=>[actor.id,actor]));

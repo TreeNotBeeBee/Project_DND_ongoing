@@ -19,7 +19,7 @@ export function projectAiWorld(raw: GameState, session: Session, members: Member
     id: raw.id, name: raw.name, rev: raw.rev, actors: [], choices: [], paused: raw.paused,
     scene: { width: 30, height: 20, gridFeet: 5, walls: [], terrain: [], fog: false },
     combat: { active: false, round: 0, turn: 0, order: [], budgets: {} },
-    events: owner ? structuredClone(raw.events) : [], world: world as GameState['world'],
+    events: owner ? structuredClone(raw.events) : [],
   };
   return { session, state, members, world, tokens: [], offers: [], profiles: [], actorViews: {} };
 }

@@ -22,6 +22,8 @@ import { applyAiPacket, createAiExchange, previewAiPacket, resolveAiReaction, re
 import { assetReferences, canReadAsset, exportAssets, restoreAssets, saveImageAsset, validateAssetReferences } from './assets';
 import { accountInput, passwordHash, verifyPassword } from './accounts';
 import { newAiDisplay } from '../shared/ai-display';
+import { AiDisplayError, dispatchAiDisplayCommand, exportAiDisplay, isAiDisplayCommand, previewAiDisplay, projectAiDisplay } from '../ai/display';
+import { projectAiWorld } from './ai-display-projection';
 
 export interface ServerOptions {
   dataDir: string; distDir?: string; hostToken?: string; engine?: any; content?: any;
@@ -101,6 +103,7 @@ export async function createApplication(options: ServerOptions) {
     return { now: Math.max(0, Math.floor(clock())), members, onlineMemberIds: [...new Set([...clients.values()].filter(c => c.campaignId === campaignId).map(c => c.memberId))], dice: options.dice || cryptoDice, resolveEngine: (state: GameState, command: Command, dice: Dice) => engine.resolveCommand(state, command, dice, state.combat.active ? undefined : { economy: 'world', skipResources: state.world?.rules.energy || state.world?.mode === 'co-create' ? ['ap'] : [] }) };
   }
   function aiContext(campaignId: string, member: Member): AiContext { return { ...worldContext(campaignId), member, engine, resolveWorldCommand }; }
+  function displayContext(campaignId: string, member: Member) { const context = worldContext(campaignId); return { member, members: context.members, now: context.now, dice: context.dice }; }
   function aiOwner(session: { member: Member; campaignId: string }, state: GameState) {
     if (state.world?.mode !== 'ai') throw new ApiError(400, 'ai_mode', '请在AI主持模式中使用交换工作台');
     if (state.world.ownerId !== session.member.id) throw new ApiError(403, 'owner_only', '只有房主可以导出或确认AI决策');
@@ -108,10 +111,11 @@ export async function createApplication(options: ServerOptions) {
   function snapshot(session: {member:Member;campaignId:string}): Snapshot {
     const row = campaign(session.campaignId);
     let raw = json(row.state) as GameState;
+    const members = (db.prepare('SELECT id,name,role FROM members WHERE campaign_id=? ORDER BY role,id').all(session.campaignId) as Member[]).map(m => ({ ...m, online: [...clients.values()].some(c => c.memberId === m.id) }));
+    if (raw.world?.ai.display) return { ...projectAiWorld(raw, session, members, projectAiDisplay(raw, session.member)!), ...(raw.world.ownerId === session.member.id ? { inviteCode: row.invite_code } : {}) };
     if (raw.world) raw = advanceWorldTime(raw, worldContext(session.campaignId)).state;
     const projected = engine.projectState ? engine.projectState(copy(raw), session.member) : raw;
     const state = confidentialProjection(projected, session.member);
-    const members = (db.prepare('SELECT id,name,role FROM members WHERE campaign_id=? ORDER BY role,id').all(session.campaignId) as Member[]).map(m => ({ ...m, online: [...clients.values()].some(c => c.memberId === m.id) }));
     if (raw.world) return { session, members, ...projectWorld(raw, session, members, engine), ...(raw.world.ownerId === session.member.id ? { inviteCode: row.invite_code } : {}) } as Snapshot;
     return { session, state, members, ...(session.member.role === 'gm' ? { inviteCode: row.invite_code } : {}) };
   }
@@ -172,7 +176,7 @@ export async function createApplication(options: ServerOptions) {
     ctx.set('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' ws://localhost:* ws://127.0.0.1:*; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'");
     try { await next(); }
     catch (error: any) {
-      const status = error instanceof ApiError ? error.status : typeof engine.RuleError==='function'&&error instanceof engine.RuleError ? 400 : Number(error.status) >= 400 && Number(error.status) < 500 ? Number(error.status) : 500;
+      const status = error instanceof ApiError ? error.status : error instanceof AiDisplayError || typeof engine.RuleError==='function'&&error instanceof engine.RuleError ? 400 : Number(error.status) >= 400 && Number(error.status) < 500 ? Number(error.status) : 500;
       if (status === 500) console.error('[server]', error?.stack || error);
       sendJson(ctx, { error: status === 500 ? '服务器内部错误' : error.message, code: error.code || (status === 413 ? 'body_too_large' : 'request_failed'), ...(error instanceof ApiError ? error.extra : {}) }, status);
     }
@@ -260,6 +264,7 @@ export async function createApplication(options: ServerOptions) {
     const session = sessionByToken(cookieToken(ctx), ctx.cookies.get(ACCOUNT_COOKIE) || '');
     if (!session) return sendJson(ctx, { entries: [], source: content.source || 'SRD 5.2.1 — CC BY 4.0' });
     const raw = json(campaign(session.campaignId).state) as GameState;
+    if (raw.world?.ai.display) return sendJson(ctx, { entries: [], source: 'AI展示协议v2，游戏资料由AI JSON提供' });
     const owner = raw.world ? raw.world.ownerId === session.member.id : session.member.role === 'gm';
     const known = new Set(raw.actors.filter(a => a.ownerId === session.member.id).flatMap(a => a.knownEntries || []));
     const entries = (content.entries || []).filter((entry: any) => owner || !raw.world || known.has(entry.id));
@@ -336,9 +341,9 @@ export async function createApplication(options: ServerOptions) {
     const session = auth(ctx), body = object(ctx.request.body); limiter.check(`ai-export:${session.member.id}`, 30);
     const result = db.transaction(() => {
       const row = campaign(session.campaignId), before = json(row.state) as GameState; aiOwner(session, before);
-      const advanced = advanceWorldTime(before, worldContext(row.id));
+      const advanced = before.world?.ai.display ? { state: before, events: [] } : advanceWorldTime(before, worldContext(row.id));
       if(advanced.events.length)advanced.state.world!.gameplayRev++;
-      const exported = createAiExchange(advanced.state, body.kind as ExchangeKind, { ...aiContext(row.id, session.member), exchangeId: body.exchangeId });
+      const exported = before.world?.ai.display ? exportAiDisplay(advanced.state, body.kind as ExchangeKind, displayContext(row.id, session.member)) : createAiExchange(advanced.state, body.kind as ExchangeKind, { ...aiContext(row.id, session.member), exchangeId: body.exchangeId });
       // Exchanging context changes the server receipt, not the gameplay revision echoed by the AI.
       exported.state.rev = before.rev + 1;
       const operationId = `ai-export:${exported.packet.exchangeId}`;
@@ -352,7 +357,7 @@ export async function createApplication(options: ServerOptions) {
   router.post('/api/ai/preview', (ctx: any) => {
     const session = auth(ctx), state = json(campaign(session.campaignId).state) as GameState; aiOwner(session, state);
     limiter.check(`ai-preview:${session.member.id}`, 60);
-    sendJson(ctx, previewAiPacket(advanceWorldTime(state,worldContext(session.campaignId)).state, object(ctx.request.body).packet, aiContext(session.campaignId, session.member)));
+    sendJson(ctx, state.world?.ai.display ? previewAiDisplay(state, object(ctx.request.body).packet, displayContext(session.campaignId, session.member)) : previewAiPacket(advanceWorldTime(state,worldContext(session.campaignId)).state, object(ctx.request.body).packet, aiContext(session.campaignId, session.member)));
   });
   router.post('/api/command', (ctx: any) => {
     const session = auth(ctx); limiter.check(`command:${session.member.id}`, 180);
@@ -369,16 +374,18 @@ export async function createApplication(options: ServerOptions) {
           return {events:json(committed.events),duplicate:true};
         }
       }
-      const advanced = state.world && command.type !== 'gm.undo' ? advanceWorldTime(state,worldContext(session.campaignId)) : {state,events:[]};
+      const displayMode = Boolean(state.world?.ai.display);
+      const advanced = state.world && !displayMode && command.type !== 'gm.undo' ? advanceWorldTime(state,worldContext(session.campaignId)) : {state,events:[]};
       state = advanced.state;
       const originalCommand = copy(command);
       if (state.world) {
         validateWorldEnvelope(command);
         const owner = state.world.ownerId === session.member.id;
+        if (displayMode && !isAiDisplayCommand(command.type) && !(owner && ['gm.pause','gm.undo','world.start'].includes(command.type))) throw new ApiError(403, 'ai_display_only', '此AI世界只呈现AI结果，请提交角色行为或使用AI JSON工作台');
         const directInventory = command.type === 'inventory.equip';
         if (directInventory && !owner && !capabilities(state, session.member).includes('manage.characters')) throw new ApiError(403, 'intent_required', '请提交角色行动，按当前模式审核或回合结算');
         if (state.world.mode === 'ai' && ['round.settle','intent.review'].includes(command.type)) throw new ApiError(403, 'ai_exchange_required', '请在AI工作台确认整轮决策，保持所选骰源与结算一致');
-        if (!isCharacterCommand(command.type) && !isWorldCommand(command.type) && !['ai.apply','ai.configure'].includes(command.type)) {
+        if (!displayMode && !isCharacterCommand(command.type) && !isWorldCommand(command.type) && !['ai.apply','ai.configure'].includes(command.type)) {
           const admin = owner && ['gm.pause','gm.undo'].includes(command.type);
           const dictatorshipMap = owner && state.world.mode === 'co-create' && state.world.governance.system === 'dictatorship' && command.type === 'scene.update';
           if (!admin && !dictatorshipMap && !(owner && state.world.mode === 'gm') && command.type !== 'choice.resolve') throw new ApiError(403, 'intent_required', '当前模式要求先提交行动意图或世界提案');
@@ -410,7 +417,13 @@ export async function createApplication(options: ServerOptions) {
         if (!modern) prepareActorCommand(state,command,session.member,roles);
         let resolution: any;
         try {
-          if (modern && isCharacterCommand(command.type)) resolution = resolveCharacterCommand(state, command, session.member, worldContext(session.campaignId).members, engine, clock());
+          if (displayMode && command.type === 'gm.pause') {
+            if (typeof command.payload?.paused !== 'boolean' || Object.keys(command.payload).length !== 1) throw new ApiError(400, 'pause_format', '暂停参数必须为布尔值');
+            const paused = copy(state); paused.paused = command.payload.paused;
+            resolution = { state: paused, events: [{ type: 'gm.pause', message: paused.paused ? '房主暂停了世界' : '房主继续了世界', gmOnly: true }] };
+          }
+          else if (displayMode) resolution = dispatchAiDisplayCommand(state, command, displayContext(session.campaignId, session.member));
+          else if (modern && isCharacterCommand(command.type)) resolution = resolveCharacterCommand(state, command, session.member, worldContext(session.campaignId).members, engine, clock());
           else if (modern && command.type === 'ai.apply') { aiOwner(session, state); if(state.paused)throw new ApiError(400,'WORLD_PAUSED','世界已暂停，请房主继续后再采用AI决策'); resolution = applyAiPacket(state, command.payload?.packet, aiContext(session.campaignId, session.member)); }
           else if (modern && command.type === 'ai.configure') {
             aiOwner(session, state);
@@ -428,7 +441,7 @@ export async function createApplication(options: ServerOptions) {
           }
           else resolution = modern ? executeEngine(state,command,worldContext(session.campaignId)) : engine.resolveCommand(copy(state),command,options.dice||cryptoDice);
         }
-        catch (error: any) { if (error instanceof ApiError) throw error; throw new ApiError(400,typeof engine.RuleError==='function'&&error instanceof engine.RuleError?error.code:'rule_validation',error?.message || '规则校验未通过'); }
+        catch (error: any) { if (error instanceof ApiError) throw error; throw new ApiError(400,error instanceof AiDisplayError || typeof engine.RuleError==='function'&&error instanceof engine.RuleError?error.code:'rule_validation',error?.message || '数据格式未通过'); }
         if (!resolution?.state || !Array.isArray(resolution.events)) throw new Error('规则引擎返回格式无效');
         next = resolution.state; drafts = resolution.events;
         if (resolution.choices) next.choices = resolution.choices;
@@ -463,6 +476,7 @@ export async function createApplication(options: ServerOptions) {
   router.post('/api/migrate', (ctx: any) => {
     const session = auth(ctx); limiter.check(`migrate:${session.member.id}`,10);
     const current = json(campaign(session.campaignId).state) as GameState;
+    if (current.world?.ai.display) throw new ApiError(403, 'ai_display_only', 'AI展示世界请通过初始化或更新JSON导入资料，旧卡迁移入口保留给原生角色世界');
     if (current.world && current.world.ownerId !== session.member.id) throw new ApiError(403, 'owner_only', '旧卡导入由房主管理，玩家请领取角色');
     const body = object(ctx.request.body); if (!body.payload || typeof body.payload !== 'object') throw new ApiError(400,'migration_invalid','请选择有效的旧 JSON 存档');
     const fingerprint = hash(canonical(body.payload));
@@ -488,13 +502,16 @@ export async function createApplication(options: ServerOptions) {
   router.get('/api/export', (ctx: any) => {
     const session=auth(ctx); const row=campaign(session.campaignId); const state:GameState=json(row.state);
     ctx.set('Content-Disposition',`attachment; filename="jigerpg-${row.id}.json"`);
-    if(session.member.role!=='gm'){const projected=state.world?projectWorld(state,session,worldContext(row.id).members,engine).state!:confidentialProjection(engine.projectState?engine.projectState(copy(state),session.member):state,session.member);const actors=projected.actors.filter(a=>a.ownerId===session.member.id);return sendJson(ctx,{format:'jigerpg-actors',version:1,exportedAt:new Date().toISOString(),actors,assets:exportAssets(db,row.id,assetReferences(actors))});}
+    if(session.member.role!=='gm'){
+      if(state.world?.ai.display){const view=projectAiDisplay(state,session.member)!;return sendJson(ctx,{format:'jigerpg-ai-player',version:2,exportedAt:new Date().toISOString(),display:view,assets:exportAssets(db,row.id,assetReferences(view))});}
+      const projected=state.world?projectWorld(state,session,worldContext(row.id).members,engine).state!:confidentialProjection(engine.projectState?engine.projectState(copy(state),session.member):state,session.member);const actors=projected.actors.filter(a=>a.ownerId===session.member.id);return sendJson(ctx,{format:'jigerpg-actors',version:1,exportedAt:new Date().toISOString(),actors,assets:exportAssets(db,row.id,assetReferences(actors))});}
     sendJson(ctx,{format:'jigerpg-campaign',version:1,schemaVersion:SCHEMA_VERSION,codeVersion:CODE_VERSION,serverId:storage.serverId,campaignId:row.id,exportedAt:new Date().toISOString(),state,assets:exportAssets(db,row.id),members:db.prepare('SELECT id,name,role FROM members WHERE campaign_id=?').all(row.id),migrations:db.prepare('SELECT report FROM migrations WHERE campaign_id=?').all(row.id).map((r:any)=>json(r.report))});
   });
   router.post('/api/restore',async(ctx:any)=>{
     const session=gmAuth(ctx), body=object(ctx.request.body), backup=object(body.backup);
     if(backup.format!=='jigerpg-campaign'||backup.version!==1||!Number.isInteger(backup.schemaVersion)||backup.schemaVersion<1||backup.schemaVersion>SCHEMA_VERSION||backup.campaignId!==session.campaignId) throw new ApiError(400,'backup_invalid','请选择当前战役、兼容版本的完整备份');
     const candidate=validateBackupState(copy(object(backup.state)));
+    if(candidate.world?.ai.display){const knownMembers=new Set(worldContext(session.campaignId).members.map(member=>member.id));for(const id of Object.keys(candidate.world.ai.display.bindings))if(!knownMembers.has(id))throw new ApiError(400,'backup_invalid','AI角色绑定引用了其他世界的成员');}
     validateActorOwnership(candidate,new Map((db.prepare('SELECT id,role FROM members WHERE campaign_id=?').all(session.campaignId) as Member[]).map(member=>[member.id,member.role])));
     if(candidate.id!==session.campaignId||!Array.isArray(candidate.actors)||candidate.actors.length>500||!Array.isArray(candidate.events)||!Array.isArray(candidate.choices)||!candidate.scene||!candidate.combat) throw new ApiError(400,'backup_invalid','备份状态结构无效');
     const actorIds=new Set<string>();
@@ -563,7 +580,7 @@ export async function createApplication(options: ServerOptions) {
     try {
       for(const record of db.prepare('SELECT id,state FROM campaigns').all() as {id:string;state:string}[]){
         const probe=json(record.state) as GameState;
-        if(!probe.world?.proposals.some(p=>p.status==='open'&&p.closesAt<=clock()))continue;
+        if(probe.world?.ai.display || !probe.world?.proposals.some(p=>p.status==='open'&&p.closesAt<=clock()))continue;
         let changed=false;
         db.transaction(()=>{
           const row=campaign(record.id),before=json(row.state) as GameState;
