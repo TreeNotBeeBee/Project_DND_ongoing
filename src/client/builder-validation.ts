@@ -1,12 +1,12 @@
 import type { Actor, ContentEntry } from '../shared/model';
 import { validateBuild, type RulesData } from '../shared/build-validation';
-import { createActor, isStatblock, validateActor } from '../engine/actors';
+import { standardStatblock, validateStandardActor } from '../shared/standard-actor';
 
 export type BuilderTab = 'identity' | 'abilities' | 'equipment' | 'spells' | 'notes';
 export interface BuilderIssue { message: string; source: string; tab: BuilderTab; field: string }
 const id = (value: unknown) => String(value || '').split(':').at(-1)!;
 export function builderRulesData(entries: ContentEntry[]): RulesData {
-  const categories: Record<string, string> = { class: 'classes', subclass: 'subclasses', level: 'levels', background: 'backgrounds', species: 'species', feat: 'feats', skill: 'skills', spell: 'spells', equipment: 'equipment' };
+  const categories: Record<string, string> = { class: 'classes', subclass: 'subclasses', level: 'levels', background: 'backgrounds', species: 'species', feat: 'feats', skill: 'skills', spell: 'spells', equipment: 'equipment', monster: 'monsters' };
   const data: RulesData = {};
   for (const entry of entries) if (categories[entry.category]) (data[categories[entry.category]] ||= []).push(entry.data);
   return data;
@@ -54,9 +54,9 @@ function locateIssue(source: string, actor: Actor, data: RulesData): BuilderIssu
 /** The checklist routes authoritative validation results; it defines no 5e rules. */
 export function builderIssues(input: Partial<Actor> & Record<string, unknown>, data: RulesData, creation = true): BuilderIssue[] {
   try {
-    const actor = createActor({ ...input, id: 'builder-validation-preview' });
+    const actor = { id: 'builder-validation-preview', name: '', kind: 'hero', ownerId: '', abilities: { str:10,dex:10,con:10,int:10,wis:10,cha:10 }, classes:[], speciesId:'',backgroundId:'', hp:{current:1,max:1,temp:0}, deathSaves:{successes:0,failures:0}, skills:[],expertise:[],saveProficiencies:[],languages:[],resources:[],inventory:[],spells:[],features:[],effects:[],position:{x:0,y:0},hidden:false,notes:'', ...input } as Actor;
     actor.name = String(input.name || '').trim();
-    const errors = [...validateActor(actor), ...(creation && !isStatblock(actor) ? validateBuild(actor, data) : [])];
+    const errors = [...(!actor.name ? ['Name is required'] : []), ...validateStandardActor(actor, data), ...(creation && !standardStatblock(actor, data) ? validateBuild(actor, data) : [])];
     const issues = errors.map(message => locateIssue(message, actor, data));
     return issues.filter((issue, index) => issues.findIndex(other => other.message === issue.message && other.field === issue.field) === index);
   } catch {

@@ -1,6 +1,7 @@
+import { pathBetween } from '../src/client/legacy-pathfinding';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { pathBetween, parseLegacyFile, queueKey, readLegacyStorage, safeFilename } from '../src/client/client-utils';
+import { parseLegacyFile, queueKey, readLegacyStorage, safeFilename } from '../src/client/client-utils';
 import type { Scene } from '../src/shared/model';
 import { pathCost } from '../src/engine/map';
 import type { Actor } from '../src/shared/model';

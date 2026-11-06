@@ -1,3 +1,4 @@
+import { validateStandardActor } from '../shared/standard-actor';
 import { ABILITIES, DAMAGE_TYPES } from '../shared/model.ts';
 import type {Actor,Ability,DerivedActor,Resource,ActionDefinition} from '../shared/model.ts';
 import {lookup,getEntry,unprefix,weaponAction,raw} from '../content/index.ts';
@@ -94,14 +95,7 @@ export function validateActor(a:Actor):string[] {
     }
     return [...new Set(errors)];
   }
-  for(const k of ABILITIES)if(!Number.isInteger(a.abilities?.[k])||a.abilities[k]<1||a.abilities[k]>30)errors.push(`Invalid ${k}: expected integer 1..30`);
-  if(isStatblock(a))return errors;
-  if(!lookup('species',a.speciesId))errors.push('Choose a SRD species');if(!lookup('backgrounds',a.backgroundId))errors.push('Choose a SRD background');
-  if(totalLevel(a)<1||totalLevel(a)>20)errors.push('Total class level must be 1..20');
-  const ids=new Set<string>();for(const c of a.classes){const id=unprefix(c.classId),d=lookup('classes',id);if(!d||!Number.isInteger(c.level)||c.level<1||c.level>20)errors.push(`Invalid class ${id}`);if(ids.has(id))errors.push(`Duplicate class ${id}`);ids.add(id);if(c.level>=3&&!c.subclassId)errors.push(`Choose ${id} subclass`);if(c.subclassId&&!d?.subclasses?.some((x:any)=>x.index===unprefix(c.subclassId!)))errors.push(`Invalid ${id} subclass`);if(a.classes.length>1){const requirements=d?.multi_classing?.prerequisites||[];for(const r of requirements)if(a.abilities[r.ability_score.index as Ability]<r.minimum_score)errors.push(`Multiclass ${id} requires ${r.ability_score.index} ${r.minimum_score}`);const choice=d?.multi_classing?.prerequisite_options;if(choice&&!choice.from.options.some((x:any)=>a.abilities[x.ability_score.index as Ability]>=x.minimum_score))errors.push(`Multiclass ${id} ability requirement not met`);}}
-  for(const id of a.spells)if(!lookup('spells',id))errors.push(`Unknown spell ${id}`);
-  if(a.inventory.filter(i=>i.attuned).length>3)errors.push('At most three attuned magic items');
-  return errors;
+  return [...errors,...validateStandardActor(a,raw)];
 }
 export function deriveActor(a:Actor):DerivedActor {
   const items=itemBonuses(a);const modifiers=Object.fromEntries(ABILITIES.map(k=>[k,modifier(isFreeActor(a)?Math.max(items.abilityMinimums[k]??-Infinity,a.abilities[k]+effectModifier(a,k)):Math.max(items.abilityMinimums[k]||0,Math.max(0,Math.min(30,a.abilities[k]+effectModifier(a,k)))))])) as Record<Ability,number>;const level=totalLevel(a),proficiency=isFreeActor(a)?a.manual?.proficiency??0:isStatblock(a)?Number(a.choices?.proficiency||2):2+Math.floor((Math.max(1,level)-1)/4);const parts=classData(a),explanation:string[]=[];

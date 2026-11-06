@@ -1,3 +1,4 @@
+import { pathBetween } from './legacy-pathfinding';
 import { useEffect, useRef, useState } from 'react';
 import type { ActionDefinition, Actor, Position, Scene } from '../shared/model';
 import { areaContains, resolveSpellArea } from '../shared/spell-geometry';
@@ -5,7 +6,7 @@ import { lineOfSight } from '../engine/map';
 import { tokenCells, tokenCentre, tokenSideCells } from '../engine/spatial';
 import { tokenFootprint } from '../engine/size';
 import { MapFallback } from './MapFallback';
-import { actorColor, actorInitial, pathBetween } from './client-utils';
+import { actorColor, actorInitial } from './client-utils';
 
 export type MapTool = 'select' | 'move' | 'target' | 'pan' | 'wall' | 'door' | 'terrain' | 'erase' | 'area';
 interface Props {
