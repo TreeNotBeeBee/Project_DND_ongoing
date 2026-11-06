@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
-import type { Actor, ContentEntry } from '../shared/model';
-import { startingEquipmentOptions } from '../engine/starting-equipment';
+import type { ContentEntry } from '../shared/model';
+import { equipmentPackageOptions } from '../shared/starting-equipment-options';
 import { contentById, entryLabel, Field } from './components';
 
 export interface StartingEquipmentChoice { classOption: string; backgroundOption: string; selections: Record<string, string> }
@@ -14,10 +14,8 @@ function describe(option: any, entries: ContentEntry[]): string {
   return option.desc || '';
 }
 export function EquipmentChoices({ classEntry, backgroundEntry, entries, value, onChange, disabled = false }: { classEntry?: ContentEntry; backgroundEntry?: ContentEntry; entries: ContentEntry[]; value: StartingEquipmentChoice; onChange: (value: StartingEquipmentChoice) => void; disabled?: boolean }) {
-  let packages: ReturnType<typeof startingEquipmentOptions> = [];
-  if (classEntry && backgroundEntry) try { packages = startingEquipmentOptions({ classes: [{ classId: classEntry.id, level: 1 }], backgroundId: backgroundEntry.id } as Actor); } catch {}
-  const classOptions = packages.find(row => row.source === 'class')?.options.map((row: {value: any}) => row.value) || classEntry?.data.starting_equipment_options?.[0]?.from?.options || [];
-  const backgroundOptions = packages.find(row => row.source === 'background')?.options.map((row: {value: any}) => row.value) || backgroundEntry?.data.equipment_options?.[0]?.from?.options || [];
+  const classOptions = equipmentPackageOptions(classEntry?.data, 'class').values;
+  const backgroundOptions = equipmentPackageOptions(backgroundEntry?.data, 'background').values;
   useEffect(() => { if (classOptions.length && value.classOption.charCodeAt(0) - 65 >= classOptions.length || backgroundOptions.length && value.backgroundOption.charCodeAt(0) - 65 >= backgroundOptions.length) onChange({ ...value, classOption: 'A', backgroundOption: 'A', selections: {} }); }, [classEntry?.id, backgroundEntry?.id]);
   function categoryItems(id: string) {
     const category = entries.find(entry => entry.category === 'equipment-category' && entry.id.split(':').pop() === id);

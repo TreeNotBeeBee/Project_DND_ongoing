@@ -25,8 +25,8 @@ export function WorldForm({ children, onSubmit, submitLabel = '保存', cancel, 
   const submit = async (event: FormEvent) => { event.preventDefault(); if (busy) return; setBusy(true); setLocalError(''); try { await onSubmit(); } catch (reason) { setLocalError(reason instanceof Error ? reason.message : '保存失败，请重试。'); } finally { setBusy(false); } };
   return <form onSubmit={event => void submit(event)}>{(localError || error) && <div className="w-sticky-error" role="alert">{localError || error}</div>}<fieldset className="w-form-fields" disabled={busy}>{children}</fieldset><footer className="w-form-footer">{footer}<div className="w-actions">{cancel && <button type="button" className="w-button secondary" onClick={cancel}>取消</button>}<button className="w-button primary" disabled={busy}>{busy ? busyLabel : submitLabel}</button></div></footer></form>;
 }
-export function WorldConfirm({ title, children, onClose, onConfirm, error, label = '确认' }: { title: string; children: ReactNode; onClose: () => void; onConfirm: () => Promise<boolean>; error?: string; label?: string }) {
-  return <WorldModal title={title} onClose={onClose} error={error}><WorldForm onSubmit={async () => { if (await onConfirm()) onClose(); }} cancel={onClose} submitLabel={label}><div className="w-modal-body w-prose">{children}</div></WorldForm></WorldModal>;
+export function WorldConfirm({ title, children, onClose, onConfirm, error, label = '确认', commandTypes }: { title: string; children: ReactNode; onClose: () => void; onConfirm: () => Promise<boolean>; error?: string; label?: string; commandTypes?: string[] }) {
+  return <WorldModal title={title} onClose={onClose} error={error} onAcknowledged={command => { if (commandTypes?.includes(command.type)) onClose(); }}><WorldForm onSubmit={async () => { if (await onConfirm()) onClose(); }} cancel={onClose} submitLabel={label}><div className="w-modal-body w-prose">{children}</div></WorldForm></WorldModal>;
 }
 export function WorldCopy({ value, label = '复制' }: { value: string; label?: string }) {
   const [state, setState] = useState('');
