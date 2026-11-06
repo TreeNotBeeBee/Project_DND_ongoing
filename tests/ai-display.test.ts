@@ -116,3 +116,23 @@ test('JSON technical controls reject NUL/DEL in strings and keys with precise pa
   }
   const safe = { 中文背景: '正常调查和答案没有词语黑名单\t\r\n', hp: { current: -1e200, max: 1e-200 } }; assert.deepEqual(parseDisplayJson(safe), safe);
 });
+test('releasing or switching PCs removes the former member portrait/disclosure preferences before another member claims the character', () => {
+  for (const operation of ['release', 'select', 'bind'] as const) {
+    const f = init('B', m => { m.pcs.push(entity('second-pc')); }); const first = { ...f.ctx, member: player }, next = { ...f.ctx, member: other };
+    let state = command(f.state, first, 'ai.display.select', { actorId: 'pc' }).state;
+    state = command(state, first, 'ai.display.profile', { image: '/api/assets/abcdefgh', publicFieldIds: ['hp'] }).state;
+    assert.ok(Object.hasOwn(projectAiDisplay(state, other)!.entities.find(e => e.id === 'pc')!.fields, 'hp'));
+    if (operation === 'release') state = command(state, first, 'ai.display.release').state;
+    else if (operation === 'select') state = command(state, first, 'ai.display.select', { actorId: 'second-pc' }).state;
+    else state = command(state, f.ctx, 'ai.display.bind', { memberId: player.id, actorId: 'second-pc' }).state;
+    state = command(state, next, 'ai.display.select', { actorId: 'pc' }).state;
+    assert.ok(!state.world!.ai.display!.profiles?.pc, operation); assert.deepEqual(projectAiDisplay(state, player)!.entities.find(e => e.id === 'pc')!.fields, {}, operation); assert.notEqual(projectAiDisplay(state, other)!.entities.find(e => e.id === 'pc')!.image, '/api/assets/abcdefgh', operation);
+    assert.doesNotThrow(() => validateAiDisplayState(state.world!.ai.display));
+  }
+});
+test('deleting a profiled PC removes its binding and profile so the resulting state remains restorable', () => {
+  const f = init(), own = { ...f.ctx, member: player }; let state = command(f.state, own, 'ai.display.select', { actorId: 'pc' }).state;
+  state = command(state, own, 'ai.display.profile', { image: '/api/assets/abcdefgh', publicFieldIds: ['hp'] }).state;
+  const e = exportAiDisplay(state, 'turn_context', f.ctx), packet = { ...e.packet, packetType: 'update', payload: { decisionId: 'delete-profiled-pc', patches: [{ op: 'delete', target: 'entity', id: 'pc' }] } };
+  state = applyAiDisplayPacket(e.state, packet, f.ctx).state; assert.ok(!state.world!.ai.display!.profiles?.pc); assert.ok(!state.world!.ai.display!.bindings[player.id]); assert.doesNotThrow(() => validateAiDisplayState(state.world!.ai.display));
+});

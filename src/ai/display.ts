@@ -167,9 +167,10 @@ export function dispatchAiDisplayCommand(input: GameState, command: Command, ctx
   if (command.type === 'world.start') { schema({}); check(d.initialized && state.world!.phase === 'setup', 'AI_DISPLAY_PHASE', '请先初始化模块；已开始的世界不能重复开始'); state.world!.phase = 'running'; }
   if (command.type === 'ai.display.select' || command.type === 'ai.display.bind') {
     schema(command.type === 'ai.display.bind' ? { memberId: displayId, actorId: displayId } : { actorId: displayId }); check(d.initialized, 'AI_DISPLAY_PHASE', '请先初始化模块'); const memberId = command.type === 'ai.display.bind' ? p.memberId : ctx.member.id;
-    check(ctx.members.some(m => m.id === memberId), 'AI_DISPLAY_MEMBER', '待绑定成员不属于此世界'); const pc = d.entities.find(e => e.id === p.actorId && e.kind === 'pc'); check(pc && (owner || visible(pc, state, ctx.member)), 'AI_DISPLAY_PC', '请选择可见的PC'); check(!Object.entries(d.bindings).some(([member, id]) => member !== memberId && id === pc.id), 'AI_DISPLAY_BINDING', '此角色已被其他玩家领取'); d.bindings[memberId] = pc.id;
+    check(ctx.members.some(m => m.id === memberId), 'AI_DISPLAY_MEMBER', '待绑定成员不属于此世界'); const pc = d.entities.find(e => e.id === p.actorId && e.kind === 'pc'); check(pc && (owner || visible(pc, state, ctx.member)), 'AI_DISPLAY_PC', '请选择可见的PC'); check(!Object.entries(d.bindings).some(([member, id]) => member !== memberId && id === pc.id), 'AI_DISPLAY_BINDING', '此角色已被其他玩家领取');
+    const previous = d.bindings[memberId]; if (previous !== pc.id && d.profiles) { if (previous) delete d.profiles[previous]; delete d.profiles[pc.id]; } d.bindings[memberId] = pc.id;
   }
-  if (command.type === 'ai.display.release') { schema({}); delete d.bindings[ctx.member.id]; }
+  if (command.type === 'ai.display.release') { schema({}); const previous = d.bindings[ctx.member.id]; if (previous && d.profiles) delete d.profiles[previous]; delete d.bindings[ctx.member.id]; }
   if (command.type === 'ai.display.profile') {
     schema({ image: displayImageSchema.nullable().optional(), publicFieldIds: z.array(displayId).max(1000).optional() }); const id = d.bindings[ctx.member.id], pc = d.entities.find(e => e.id === id && e.kind === 'pc'); check(pc, 'AI_DISPLAY_BINDING', '请先领取自己的PC');
     for (const key of p.publicFieldIds || []) { const f = pc.fields[key]; check(f && f.visibility !== 'gm' && visible(f, state, ctx.member), 'AI_DISPLAY_PROFILE', '只能主动公开自己可见且非房主秘密的字段'); }
