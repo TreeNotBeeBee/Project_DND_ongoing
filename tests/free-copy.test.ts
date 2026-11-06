@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { createActor, createGameState, deriveActor, resolveCommand, validateActor } from '../src/engine';
 import { createFreeCopy } from '../src/engine/free-copy';
 import type { Actor, ItemInstance } from '../src/shared/model';
+import { creatureSizeRank, tokenFootprint } from '../src/engine/size';
 
 const gear=(contentId:string,options:Partial<ItemInstance>={}):ItemInstance=>({id:`instance:${contentId}`,contentId,name:contentId,quantity:1,equipped:true,...options});
 const standard=(patch:Record<string,any>={})=>createActor({id:'original',ownerId:'original-owner',name:'Original',kind:'hero',classes:[{classId:'fighter',level:3,subclassId:'champion'}],speciesId:'human',backgroundId:'soldier',abilities:{str:18,dex:18,con:14,int:16,wis:12,cha:10},notes:'Private original notes',story:'Original story',draft:false,...patch});
@@ -30,4 +31,10 @@ test('class movement with speed effects and incapacitation preserves current der
 });
 test('self effects point to the new identity while foreign effects, source item IDs and parent provenance remain intact',()=>{
  const source=standard({kind:'companion',choices:{parentActorId:'parent',_worldJobs:{pending:{outputs:[]}}},effects:[{id:'self',name:'Self',sourceActorId:'original',modifiers:{ac:1}},{id:'foreign',name:'Foreign',sourceActorId:'other-caster'}]});const copy=createFreeCopy(source);assert.equal(copy.effects[0].sourceActorId,copy.id);assert.equal(copy.effects[1].sourceActorId,'other-caster');assert.equal(source.effects[0].sourceActorId,'original');assert.equal(copy.choices!.parentActorId,undefined);assert.equal(copy.choices!._worldJobs,undefined);assert.equal(copy.choices!.copySourceParentActorId,'parent');assert.ok(copy.migrationIssues!.some(issue=>issue.includes('进行中的世界制作任务')));
+});
+test('published Small size and temporary size shifts survive the free-profile conversion without being counted twice',()=>{
+ const source=standard({speciesId:'gnome',size:4,effects:[{id:'enlarge',name:'Enlarge',modifiers:{sizeDelta:1}}]});const copy=equivalent(source);assert.equal(copy.size,.5);assert.equal(creatureSizeRank(copy),creatureSizeRank(source));assert.equal(tokenFootprint(copy),tokenFootprint(source));copy.effects=[];const plain=structuredClone(source);plain.effects=[];assert.equal(creatureSizeRank(copy),creatureSizeRank(plain));
+});
+test('Constitution equipment and capped temporary attributes remain equal now and disclose future calibration limits',()=>{
+ const source=standard({inventory:[gear('magic-item:amulet-of-health',{attuned:true}),gear('equipment:plate-armor')],effects:[{id:'strength',name:'Strength',modifiers:{str:50}}]});const copy=equivalent(source);assert.ok(copy.migrationIssues!.some(issue=>issue.includes('体质装备')));assert.ok(copy.migrationIssues!.some(issue=>issue.includes('临时属性效果结束')));assert.equal(copy.manual!.maxHp,source.hp.max);assert.equal(copy.abilities.str,-20);
 });

@@ -5,6 +5,7 @@ import { featureActions, extraSpeed } from './feature-rules';
 import { itemBaseEquipment, itemBonuses } from './item-effects';
 import { lookup } from '../content';
 import { assert } from './dice';
+import { creatureSizeRank } from './size';
 
 const near = (a: number, b: number) => Math.abs(a - b) <= 1e-8 * Math.max(1, Math.abs(a), Math.abs(b));
 function worn(actor: Actor) {
@@ -39,6 +40,9 @@ export function createFreeCopy(source: Actor): Actor {
   for (const effect of copy.effects) if (effect.sourceActorId === source.id) effect.sourceActorId = copy.id;
 
   if (source.profile !== 'free') {
+    const unsized = structuredClone(source);
+    for (const effect of unsized.effects) if (effect.modifiers) delete effect.modifiers.sizeDelta;
+    copy.size = [0.25, 0.5, 1, 2, 3, 4][creatureSizeRank(unsized)];
     // The standard score cap must not become an accidental buff when the free profile removes it.
     for (const ability of ABILITIES) {
       const bonus = effectModifier(source, ability), adjusted = Math.max(0, Math.min(30, source.abilities[ability] + bonus)) - bonus;
@@ -84,6 +88,7 @@ export function createFreeCopy(source: Actor): Actor {
   for (const action of missing) issue(`动作「${action.name}」(${action.id})未能保留原引用，请主持人复核。`);
   for (const action of original.attacks.filter(action => action.automation === 'unsupported' || action.automation === 'adjudication')) issue(`动作「${action.name}」仍保持原${action.automation === 'unsupported' ? '尚未自动化' : '需要裁定'}状态，复制不会把它变成自动结算。`);
   if (source.concentration) issue('专注及本卡效果已保留，原角色施加在其他角色上的效果没有复制；请主持人核对跨角色专注关系。');
+  if (source.acOverride !== undefined) issue(`原护甲覆盖值${source.acOverride}已保留，仍优先于手动护甲基准，并只再叠加装备与效果加值；修改该基准前请核对覆盖项。`);
   if (source.kind !== 'hero') issue('副本已作为待领取主角保存；原阵营、随从主人关系及跨角色效果需要重新确认。');
   if (source.choices?._worldJobs) issue('进行中的世界制作任务仍归原角色，未为副本复制产出或任务权利。');
   copy.migrationIssues = issues;
