@@ -337,7 +337,7 @@ export async function createApplication(options: ServerOptions) {
         if(next.actors.length>500)throw new ApiError(400,'actor_limit','单战役角色数量超过 500');
         validateActorOwnership(next,roles);
       }
-      if (state.world && next.world && !['profile.update','draft.save','draft.delete','vote.cast','vote.preference','governance.grant'].includes(command.type)) next.world.gameplayRev = state.world.gameplayRev + 1;
+      if (state.world && next.world && !['profile.update','draft.save','draft.delete','vote.cast','vote.preference','governance.grant'].includes(command.type) && !(command.type === 'ai.apply' && !drafts.length)) next.world.gameplayRev = state.world.gameplayRev + 1;
       next.id = state.id; next.rev = state.rev + 1;
       const appended = appendEvents(state,next,drafts,command.operationId,row.event_sequence);
       persistState(row.id,next,appended.sequence);

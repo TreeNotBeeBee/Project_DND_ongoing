@@ -142,3 +142,29 @@ test('free-copy server command preserves original byte-for-byte and creates a di
   assert.equal(copy.choices.copySourceActorId,id);assert.ok(copy.choices.copySourceHash);
   assert.equal((await player.state()).state.actors.length,1);await player.command('character.copyFree',{actorId:id},undefined,403);
 });
+
+test('real AI room completes rounds with the selected dice source and preserves one-time decisions across restarts',async t=>{
+  const f=await setup(t);await f.create('ai');const player=await f.joinPlayer('探索者');const actorId=await f.register(player);
+  await f.owner.command('world.configure',{rules:{...structuredClone(DEFAULT_RULES),energy:{maximum:10,perRound:3,recoveryMode:'hour',recovery:1},costs:{move:0.5}}});
+  await f.owner.command('world.start');
+  await f.owner.command('world.configure',{lore:'直接绕过AI'},undefined,400);
+  await f.owner.command('knowledge.unlock',{actorId,entryId:'monster:tarrasque'},undefined,403);
+  for(const diceSource of ['program','ai'] as const){
+    await f.owner.command('ai.configure',{diceSource});
+    const position=(await player.state()).state.actors[0].position,destination={x:position.x+1,y:position.y};
+    await player.command('intent.save',{intent:{actorId,type:'move',payload:{path:[destination]}}});await player.command('turn.end');
+    const exported=await f.owner.api('/api/ai/export',{kind:'turn_context'});assert.equal(exported.status,200,exported.body.error);
+    const first=exported.body.packet,intent=first.payload.round.intents.find((i:any)=>i.actorId===actorId&&i.status==='planned');assert.ok(intent);
+    const rollReply={protocol:'jigerpg-ai',version:1,packetType:'decision',campaignId:first.campaignId,exchangeId:first.exchangeId,worldRevision:first.worldRevision,payload:{decisionId:'roll-'+diceSource,completeRound:false,steps:[{id:'chance',type:'roll',expression:'1d6',rollId:'chance-result'}],...(diceSource==='ai'?{aiRolls:[{id:'chance-result',expression:'1d6',rolls:[3],total:3}]}:{})}};
+    await f.owner.command('ai.apply',{packet:rollReply});
+    const results=await f.owner.api('/api/ai/export',{kind:'roll_results',exchangeId:first.exchangeId});assert.equal(results.status,200,results.body.error);
+    const packet=results.body.packet;assert.equal(packet.payload.rolls[0].total,diceSource==='program'?1:3);
+    const reply={protocol:'jigerpg-ai',version:1,packetType:'decision',campaignId:packet.campaignId,exchangeId:packet.exchangeId,worldRevision:packet.worldRevision,payload:{decisionId:'real-'+diceSource,completeRound:true,steps:[{id:'move',type:'intent',intentId:intent.id,approve:true}]}};
+    const preview=await f.owner.api('/api/ai/preview',{packet:reply});assert.equal(preview.body.valid,true,JSON.stringify(preview.body));
+    await f.owner.command('ai.apply',{packet:reply});const once=await f.owner.state();assert.equal(once.world!.round.phase,'intermission');
+    const hero=once.state.actors.find(a=>a.id===actorId)!;assert.deepEqual(hero.position,destination);assert.equal(hero.resources.find(r=>r.id==='ap')!.current,diceSource==='program'?9.5:9);
+    assert.equal(once.world!.ai.exchanges.find(e=>e.id===first.exchangeId)!.rolls!.find(r=>r.id==='chance-result')!.total,diceSource==='program'?1:3);
+    await f.restart();await f.owner.command('ai.apply',{packet:reply});const repeated=await f.owner.state();assert.equal(repeated.world!.gameplayRev,once.world!.gameplayRev);assert.equal(repeated.state.actors.find(a=>a.id===actorId)!.resources.find(r=>r.id==='ap')!.current,hero.resources.find(r=>r.id==='ap')!.current);
+    await f.owner.command('round.start');
+  }
+});
