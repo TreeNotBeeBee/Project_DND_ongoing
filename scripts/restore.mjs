@@ -21,7 +21,7 @@ export async function restore(source=process.argv[2]){
       if(candidate.pragma('integrity_check',{simple:true})!=='ok')throw new Error('备份完整性检查失败');
       if(candidate.pragma('foreign_key_check').length)throw new Error('备份关联完整性检查失败');
       if(Number(candidate.pragma('user_version',{simple:true}))!==SCHEMA_VERSION)throw new Error('备份数据库结构与当前程序不兼容');
-      for(const table of ['metadata','campaigns','members','sessions','operations','migrations'])if(!candidate.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(table))throw new Error(`备份缺少 ${table}`);
+      for(const table of ['metadata','campaigns','members','sessions','operations','migrations',...(SCHEMA_VERSION>=3?['accounts','account_sessions','account_members']:[])])if(!candidate.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(table))throw new Error(`备份缺少 ${table}`);
       staged=join(dataDir,`restore-${randomUUID()}.sqlite`);await candidate.backup(staged);
     }finally{candidate.close();}
     if(existsSync(target)){const current=new Database(target);try{await onlineBackup(current,join(dataDir,'backups'),'before-file-restore');current.pragma('wal_checkpoint(TRUNCATE)');}finally{current.close();}}

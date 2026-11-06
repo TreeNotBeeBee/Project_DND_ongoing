@@ -488,7 +488,7 @@ export async function createApplication(options: ServerOptions) {
   });
   router.post('/api/restore',async(ctx:any)=>{
     const session=gmAuth(ctx), body=object(ctx.request.body), backup=object(body.backup);
-    if(backup.format!=='jigerpg-campaign'||backup.version!==1||![1,SCHEMA_VERSION].includes(backup.schemaVersion)||backup.campaignId!==session.campaignId) throw new ApiError(400,'backup_invalid','请选择当前战役、兼容版本的完整备份');
+    if(backup.format!=='jigerpg-campaign'||backup.version!==1||!Number.isInteger(backup.schemaVersion)||backup.schemaVersion<1||backup.schemaVersion>SCHEMA_VERSION||backup.campaignId!==session.campaignId) throw new ApiError(400,'backup_invalid','请选择当前战役、兼容版本的完整备份');
     const candidate=validateBackupState(copy(object(backup.state)));
     validateActorOwnership(candidate,new Map((db.prepare('SELECT id,role FROM members WHERE campaign_id=?').all(session.campaignId) as Member[]).map(member=>[member.id,member.role])));
     if(candidate.id!==session.campaignId||!Array.isArray(candidate.actors)||candidate.actors.length>500||!Array.isArray(candidate.events)||!Array.isArray(candidate.choices)||!candidate.scene||!candidate.combat) throw new ApiError(400,'backup_invalid','备份状态结构无效');
