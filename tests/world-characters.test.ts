@@ -55,3 +55,16 @@ test('dictator delegated character rights are scoped and immediately revocable; 
   state.world!.governance.system = 'democracy';
   assert.throws(() => apply(state, 'owner', 'character.patch', { actorId, patch: { name: '绕过' } }), /需要GM决策或通过提案/);
 });
+
+test('modern projection never reintroduces GM-only effects, adjudication payloads, obscured names or private AP ledgers',()=>{
+  const state=register(fresh(),'p1'),own=state.actors[0];
+  own.effects.push({id:'latent',name:'SECRET_LATENT_POISON',gmOnly:true});
+  const hidden=engine.createActor({profile:'free',name:'SECRET_HIDDEN_CREATURE',kind:'monster',ownerId:'owner',hidden:true});state.actors.push(hidden);
+  state.world!.round.spent[hidden.id]=7;
+  state.choices.push({id:'gm-choice',actorId:own.id,ownerId:'__gm__',kind:'adjudication',prompt:'GM secret',options:[],payload:{secret:'SECRET_ADJUDICATION'}});
+  state.choices.push({id:'player-choice',actorId:own.id,ownerId:'p1',kind:'reaction',prompt:'Your reaction',options:[{id:'skip',label:'跳过'}],payload:{secret:'SECRET_ENGINE_CONTINUATION'}});
+  state.events.push({id:'event',sequence:1,operationId:'event-operation',timestamp:new Date().toISOString(),type:'note',message:'遇见 SECRET_HIDDEN_CREATURE'});
+  const view=projectWorld(state,{campaignId:state.id,member:members[1]},members,engine);
+  for(const secret of ['SECRET_LATENT_POISON','SECRET_HIDDEN_CREATURE','SECRET_ADJUDICATION','SECRET_ENGINE_CONTINUATION',hidden.id])assert.ok(!JSON.stringify(view).includes(secret),secret);
+  assert.deepEqual(view.state!.choices.map(c=>c.id),['player-choice']);assert.deepEqual(view.state!.choices[0].payload,{});
+});

@@ -130,22 +130,22 @@ export function projectWorld(raw: GameState, session: Snapshot['session'], membe
   const w = raw.world!, owner = session.member.id === w.ownerId;
   const manageCards = owner || capabilities(raw, session.member).includes('manage.characters');
   const manageMembers = owner || capabilities(raw, session.member).includes('manage.members');
-  const projected: GameState = engine.projectState ? engine.projectState(structuredClone(raw), session.member) : structuredClone(raw);
+  const projected: GameState = engine.projectState ? engine.projectState(structuredClone(raw), { ...session.member, role: owner ? 'gm' : 'player' }) : structuredClone(raw);
   const allowed = new Set(projected.actors.map(a => a.id));
   const own = raw.actors.filter(a => a.ownerId === session.member.id && (a.registration === 'registered' || a.kind === 'companion'));
   const world: WorldView = {
     version: 1, ownerId: w.ownerId, mode: w.mode, governance: structuredClone(w.governance), phase: w.phase, gameplayRev: w.gameplayRev,
     lore: w.lore, ...(owner ? { secretLore: w.secretLore } : {}), rules: structuredClone(w.rules),
-    round: { ...structuredClone(w.round), intents: w.round.intents.filter(i => owner || i.memberId === session.member.id).map(i => structuredClone(i)) },
+    round: { ...structuredClone(w.round), spent: Object.fromEntries(Object.entries(w.round.spent).filter(([id]) => owner || own.some(a=>a.id===id))), intents: w.round.intents.filter(i => owner || i.memberId === session.member.id).map(i => structuredClone(i)) },
     drafts: w.drafts.filter(d => d.ownerId === session.member.id).map(d => structuredClone(d)),
     proposals: structuredClone(w.proposals), timeoutVotes: { [session.member.id]: w.timeoutVotes[session.member.id] || 'abstain' },
     items: structuredClone(w.items), nodes: w.nodes.filter(n => owner || !n.hidden).map(n => structuredClone(n)), ...(owner ? { npcBehaviors: structuredClone(w.npcBehaviors) } : {}), energyAt: Object.fromEntries(Object.entries(w.energyAt).filter(([id]) => owner || own.some(a => a.id === id))),
     ai: { diceSource: w.ai.diceSource, narratives: w.ai.narratives.filter(n => owner || !n.actorIds?.length || n.actorIds.some(id => own.some(a => a.id === id))).map(n => structuredClone(n)), ...(owner ? { exchanges: structuredClone(w.ai.exchanges) } : {}) }, capabilities: capabilities(raw, session.member),
   };
   const state = structuredClone(raw); delete state.world;
-  state.actors = manageCards ? structuredClone(raw.actors).map(a => { if (!owner && a.ownerId !== session.member.id) a.notes = ''; return a; }) : structuredClone(own);
-  state.choices = state.choices.filter(c => owner || c.ownerId === session.member.id || own.some(a => a.id === c.actorId));
-  state.events = state.events.filter(e => owner || !e.gmOnly && (!e.actorId || allowed.has(e.actorId))).map(e => ({ ...e, changes: owner ? e.changes : undefined }));
+  state.actors = manageCards ? structuredClone(raw.actors).map(a => { if (!owner) { a.effects = a.effects.filter(e=>!e.gmOnly); if(a.ownerId!==session.member.id){a.notes='';delete a.choices;} } return a; }) : projected.actors.filter(a => own.some(o=>o.id===a.id));
+  state.choices = owner ? state.choices : projected.choices;
+  state.events = owner ? state.events : projected.events;
   if (!owner) { const active = state.combat.order[state.combat.turn]; state.combat.order = state.combat.order.filter(id => allowed.has(id)); state.combat.turn = Math.max(0, state.combat.order.indexOf(active)); state.combat.budgets = Object.fromEntries(Object.entries(state.combat.budgets).filter(([id]) => allowed.has(id))); state.events = state.events.filter(e => !e.targetIds?.some(id => !allowed.has(id))); }
   const visible = raw.actors.filter(a => allowed.has(a.id) && (!a.hidden || owner || a.ownerId === session.member.id) && (a.kind !== 'hero' || a.registration === 'registered'));
   const tokens = visible.map(a => ({ id: a.id, name: a.name, kind: a.kind, ownerId: a.ownerId, position: structuredClone(a.position), size: tokenFootprint(a), hidden: a.hidden, portrait: a.portrait, dead: a.dead, conditions: a.effects.filter(e => !e.gmOnly && e.condition).map(e => e.condition!), ...((owner || a.ownerId === session.member.id || a.publicGroups?.includes('stats')) ? { hp: structuredClone(a.hp) } : {}) }));
