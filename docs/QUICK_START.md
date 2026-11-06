@@ -76,8 +76,8 @@
 
 ## 测试截图
 
-![虚构验收世界的房主桌面](screenshots/world-desktop.png)
+![虚构 AI 验收世界的玩家地图](screenshots/ai-player-desktop.png)
 
-<img src="screenshots/world-player-mobile.png" width="300" alt="同一虚构验收世界的玩家手机界面" />
+<img src="screenshots/ai-player-mobile.png" width="300" alt="同一虚构 AI 世界的手机地图" />
 
 这些图片仅展示验收场景；不包含用户真实战役、身份凭据或存档。

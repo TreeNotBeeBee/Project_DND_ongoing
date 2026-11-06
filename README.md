@@ -17,14 +17,16 @@ JigeRPG 把主持人、角色、战术地图和行动记录放在同一张桌上
 
 房主把模组与程序生成的提示词交给 ChatGPT，再导入初始化 JSON。玩家选择角色后直接进入地图，点击头像查看资料或更换图片。AI 提供的角色、世界观与开场会显示在页面中；私密资料由服务器按角色分发。
 
-## 看看冒险桌
+## 看看 AI 冒险地图
 
-![房主世界工作台：角色、地图、回合与治理](docs/screenshots/world-desktop.png)
+![AI 玩家地图：固定大小头像、公开地标与简洁行动输入](docs/screenshots/ai-player-desktop.png)
 
 <div align="center">
-  <img src="docs/screenshots/world-player-mobile.png" width="300" alt="玩家手机界面：自己的角色与冒险计划" />
+  <img src="docs/screenshots/ai-player-mobile.png" width="300" alt="AI 玩家手机地图：头像、地标与三个地图按钮" />
   <p><sub>以上为自动化验收使用的虚构战役与角色，不包含用户真实战役或存档。</sub></p>
 </div>
+
+[查看账号主页：开始 / 新建 / 基础设置](docs/screenshots/account-home.png)
 
 | 一张桌上的工具 | 当前能力 |
 | --- | --- |
