@@ -39,6 +39,18 @@ export async function readWorldJson(file: File): Promise<unknown> {
   if (file.size > 64 * 1024 * 1024) throw new Error('文件超过 64 MiB。请保留原件并拆分后再导入。');
   try { return JSON.parse(await file.text()); } catch { throw new Error('文件不是有效的 JSON。原文件未修改。'); }
 }
+export async function uploadWorldAsset(dataUrl: string): Promise<string> {
+  try {
+    const response = await fetch('/api/assets', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-Jige-Request': '1' }, body: JSON.stringify({ dataUrl }), signal: AbortSignal.timeout(20_000) });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || '图片上传失败，请重新选择文件重试。');
+    if (typeof result.url !== 'string' || !/^\/api\/assets\/[a-zA-Z0-9-]+$/.test(result.url)) throw new Error('服务器未确认图片地址，请重新上传。');
+    return result.url;
+  } catch (reason) {
+    if (reason instanceof DOMException && ['AbortError', 'TimeoutError'].includes(reason.name)) throw new Error('图片上传超时。原文件未修改，请恢复连接后重新选择图片重试。');
+    throw reason instanceof Error ? reason : new Error('图片上传失败，请恢复连接后重试。');
+  }
+}
 export function saveWorldJson(value: unknown, filename: string) {
   const url = URL.createObjectURL(new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' }));
   const link = document.createElement('a'); link.href = url; link.download = filename.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_'); link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
