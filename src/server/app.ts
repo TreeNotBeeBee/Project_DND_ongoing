@@ -17,6 +17,8 @@ import { newWorld, type WorldMode } from '../shared/world';
 import { isCharacterCommand, resolveCharacterCommand, projectWorld, validateWorldEnvelope, capabilities } from './world-controller';
 import { resolveWorldCommand, isWorldCommand } from '../world/index';
 import { advanceWorldTime } from '../world/clock';
+import { executeEngine } from '../world/engine';
+import { applyAiPacket, createAiExchange, previewAiPacket, resolveAiReaction, resumeAiDecisions, type AiContext, type ExchangeKind } from '../ai/protocol';
 import { assetReferences, canReadAsset, exportAssets, restoreAssets, saveImageAsset, validateAssetReferences } from './assets';
 
 export interface ServerOptions {
@@ -85,6 +87,11 @@ export async function createApplication(options: ServerOptions) {
   function worldContext(campaignId: string) {
     const members = db.prepare('SELECT id,name,role FROM members WHERE campaign_id=?').all(campaignId) as Member[];
     return { now: Math.max(0, Math.floor(clock())), members, onlineMemberIds: [...new Set([...clients.values()].filter(c => c.campaignId === campaignId).map(c => c.memberId))], dice: options.dice || cryptoDice, resolveEngine: (state: GameState, command: Command, dice: Dice) => engine.resolveCommand(state, command, dice, state.combat.active ? undefined : { economy: 'world', skipResources: state.world?.rules.energy || state.world?.mode === 'co-create' ? ['ap'] : [] }) };
+  }
+  function aiContext(campaignId: string, member: Member): AiContext { return { ...worldContext(campaignId), member, engine, resolveWorldCommand }; }
+  function aiOwner(session: { member: Member; campaignId: string }, state: GameState) {
+    if (state.world?.mode !== 'ai') throw new ApiError(400, 'ai_mode', '请在AI主持模式中使用交换工作台');
+    if (state.world.ownerId !== session.member.id) throw new ApiError(403, 'owner_only', '只有房主可以导出或确认AI决策');
   }
   function snapshot(session: {member:Member;campaignId:string}): Snapshot {
     const row = campaign(session.campaignId);
@@ -219,6 +226,26 @@ export async function createApplication(options: ServerOptions) {
     sendJson(ctx,{ok:true});
   });
   router.get('/api/state', (ctx: any) => sendJson(ctx,snapshot(auth(ctx))));
+  router.post('/api/ai/export', (ctx: any) => {
+    const session = auth(ctx), body = object(ctx.request.body); limiter.check(`ai-export:${session.member.id}`, 30);
+    const result = db.transaction(() => {
+      const row = campaign(session.campaignId), before = json(row.state) as GameState; aiOwner(session, before);
+      const exported = createAiExchange(before, body.kind as ExchangeKind, { ...aiContext(row.id, session.member), exchangeId: body.exchangeId });
+      // Exchanging context changes the server receipt, not the gameplay revision echoed by the AI.
+      exported.state.rev = before.rev + 1;
+      const operationId = `ai-export:${exported.packet.exchangeId}`;
+      const appended = appendEvents(before, exported.state, [{ type: 'ai.export', message: '房主已导出AI交换上下文', gmOnly: true }], operationId, row.event_sequence);
+      persistState(row.id, exported.state, appended.sequence);
+      db.prepare('INSERT INTO operations(campaign_id,member_id,operation_id,command_type,command_json,before_state,events,created_at) VALUES (?,?,?,?,?,?,?,?)').run(row.id, session.member.id, operationId, 'ai.export', JSON.stringify({ kind: body.kind }), JSON.stringify(before), JSON.stringify(appended.events), new Date().toISOString());
+      return { packet: exported.packet, schema: exported.schema, prompt: exported.prompt };
+    })();
+    sendJson(ctx, result); broadcast(session.campaignId);
+  });
+  router.post('/api/ai/preview', (ctx: any) => {
+    const session = auth(ctx), state = json(campaign(session.campaignId).state) as GameState; aiOwner(session, state);
+    limiter.check(`ai-preview:${session.member.id}`, 60);
+    sendJson(ctx, previewAiPacket(state, object(ctx.request.body).packet, aiContext(session.campaignId, session.member)));
+  });
   router.post('/api/command', (ctx: any) => {
     const session = auth(ctx); limiter.check(`command:${session.member.id}`, 180);
     const command = copy(object(ctx.request.body)) as Command;
@@ -239,7 +266,8 @@ export async function createApplication(options: ServerOptions) {
         const owner = state.world.ownerId === session.member.id;
         const directInventory = command.type === 'inventory.equip';
         if (directInventory && !owner && !capabilities(state, session.member).includes('manage.characters')) throw new ApiError(403, 'intent_required', '请提交角色行动，按当前模式审核或回合结算');
-        if (!isCharacterCommand(command.type) && !isWorldCommand(command.type) && command.type !== 'ai.apply') {
+        if (state.world.mode === 'ai' && ['round.settle','intent.review'].includes(command.type)) throw new ApiError(403, 'ai_exchange_required', '请在AI工作台确认整轮决策，保持所选骰源与结算一致');
+        if (!isCharacterCommand(command.type) && !isWorldCommand(command.type) && !['ai.apply','ai.configure'].includes(command.type)) {
           const admin = owner && ['gm.pause','gm.undo'].includes(command.type);
           const dictatorshipMap = owner && state.world.mode === 'co-create' && state.world.governance.system === 'dictatorship' && command.type === 'scene.update';
           if (!admin && !dictatorshipMap && !(owner && state.world.mode === 'gm') && command.type !== 'choice.resolve') throw new ApiError(403, 'intent_required', '当前模式要求先提交行动意图或世界提案');
@@ -272,8 +300,22 @@ export async function createApplication(options: ServerOptions) {
         let resolution: any;
         try {
           if (modern && isCharacterCommand(command.type)) resolution = resolveCharacterCommand(state, command, session.member, worldContext(session.campaignId).members, engine, clock());
+          else if (modern && command.type === 'ai.apply') { aiOwner(session, state); resolution = applyAiPacket(state, command.payload?.packet, aiContext(session.campaignId, session.member)); }
+          else if (modern && command.type === 'ai.configure') {
+            aiOwner(session, state);
+            if (!['program','ai'].includes(String(command.payload?.diceSource)) || Object.keys(command.payload || {}).some(key => key !== 'diceSource')) throw new ApiError(400, 'ai_dice_source', '请选择程序或AI骰源');
+            if (state.choices.length || state.world!.ai.exchanges.some(e => Object.values((e.payload._decisions || {}) as Record<string, any>).some(receipt => receipt.status === 'pending')) || state.world!.round.intents.some(i => i.status === 'executed')) throw new ApiError(400, 'ai_dice_pending', '请先完成当前决策或进入下一轮，再切换骰源');
+            const configured = copy(state); configured.world!.ai.diceSource = command.payload!.diceSource as 'program' | 'ai';
+            resolution = { state: configured, events: [{ type: command.type, message: `房主将骰源设为${command.payload!.diceSource === 'program' ? '程序' : 'AI'}`, gmOnly: false }] };
+          }
           else if (modern && isWorldCommand(command.type)) resolution = resolveWorldCommand(state, command, session.member, worldContext(session.campaignId));
-          else resolution = engine.resolveCommand(copy(state),command,options.dice||cryptoDice);
+          else if (modern && state.world!.mode === 'ai' && command.type === 'choice.resolve') {
+            resolution = resolveAiReaction(state, command, options.dice || cryptoDice, (value, nextCommand, dice) => executeEngine(value, nextCommand, { ...worldContext(session.campaignId), dice }));
+            const owner = worldContext(session.campaignId).members.find(m => m.id === state.world!.ownerId)!;
+            const resumed = resumeAiDecisions(resolution.state, aiContext(session.campaignId, owner));
+            resolution = { state: resumed.state, events: [...resolution.events, ...resumed.events] };
+          }
+          else resolution = modern ? executeEngine(state,command,worldContext(session.campaignId)) : engine.resolveCommand(copy(state),command,options.dice||cryptoDice);
         }
         catch (error: any) { if (error instanceof ApiError) throw error; throw new ApiError(400,typeof engine.RuleError==='function'&&error instanceof engine.RuleError?error.code:'rule_validation',error?.message || '规则校验未通过'); }
         if (!resolution?.state || !Array.isArray(resolution.events)) throw new Error('规则引擎返回格式无效');
@@ -321,7 +363,7 @@ export async function createApplication(options: ServerOptions) {
       if (!Array.isArray(migrated?.actors) || !migrated.report) throw new Error('迁移引擎返回格式无效');
       if (!migrated.actors.length) throw new ApiError(400,'migration_empty','存档中没有可迁移的角色');
       const known = new Set(state.actors.map(a=>a.id));
-      for (const actor of migrated.actors) { if(known.has(actor.id)) throw new ApiError(409,'migration_collision','迁移角色编号冲突'); actor.ownerId=session.member.id; actor.hidden=false; state.actors.push(actor); known.add(actor.id); }
+      for (const actor of migrated.actors) { if(known.has(actor.id)) throw new ApiError(409,'migration_collision','迁移角色编号冲突'); actor.ownerId=session.member.id; actor.hidden=false; if(state.world && actor.kind === 'hero'){actor.registration='available';actor.hidden=true;} state.actors.push(actor); known.add(actor.id); }
       const before:GameState = json(row.state); state.rev++;
       const operationId=`migration:${fingerprint}:${randomUUID()}`;
       const appended=appendEvents(before,state,[{type:'migration',message:`${session.member.name} 复制迁移了 ${migrated.actors.length} 张旧角色卡`,gmOnly:true}],operationId,row.event_sequence);

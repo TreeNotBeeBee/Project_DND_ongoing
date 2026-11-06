@@ -110,3 +110,35 @@ test('image references cannot launder private assets and database-backed picture
   assert.equal((await f.owner.api('/api/restore', { backup })).status, 200);
   assert.equal((await p2.api(own.body.url)).status, 200); assert.equal((await p2.api(secret.body.url)).status, 404);
 });
+
+test('AI exchange endpoints restrict authority, validate previews and preserve gameplay revisions and idempotent initialization', async t => {
+  const f = await setup(t); await f.create('ai'); const player = await f.joinPlayer('旁观玩家');
+  assert.equal((await player.api('/api/ai/export', {kind:'initialize'})).status,403);
+  const before = await f.owner.state(), exported = await f.owner.api('/api/ai/export', {kind:'initialize'});
+  assert.equal(exported.status,200,exported.body.error);
+  assert.equal(exported.body.packet.worldRevision,before.world!.gameplayRev);
+  assert.equal((await f.owner.state()).world!.gameplayRev,before.world!.gameplayRev);
+  assert.equal((await f.owner.state()).state.rev,before.state.rev+1);
+  const {packet,schema,prompt}=exported.body; assert.ok(schema&&prompt);
+  const reply={protocol:packet.protocol,version:1,packetType:'initialize',campaignId:packet.campaignId,exchangeId:packet.exchangeId,worldRevision:packet.worldRevision,payload:{decisionId:'initial-import-1',lore:'外部AI世界背景',characters:[{id:'external-hero',name:'探索者',profile:'free',manual:{maxHp:23}}]}};
+  const preview=await f.owner.api('/api/ai/preview',{packet:reply});assert.equal(preview.body.valid,true,JSON.stringify(preview.body.errors));
+  assert.equal((await f.owner.state()).state.actors.length,0,'preview must not mutate data');
+  const applied=await f.owner.command('ai.apply',{packet:reply});assert.equal(applied.body.snapshot.state.actors.length,1);
+  assert.equal(applied.body.snapshot.state.actors[0].hp.max,23);assert.equal(applied.body.snapshot.state.actors[0].registration,'available');
+  assert.equal((await player.state()).state.actors.length,0);assert.equal((await player.state()).offers!.length,1);
+  await f.owner.command('ai.apply',{packet:reply});assert.equal((await f.owner.state()).state.actors.length,1);
+  await f.restart();await f.owner.command('ai.apply',{packet:reply});assert.equal((await f.owner.state()).state.actors.length,1);
+  await player.command('ai.apply',{packet:reply},undefined,403);
+  await f.owner.command('round.settle',{},undefined,403);
+});
+
+test('free-copy server command preserves original byte-for-byte and creates a distinct unclaimed private card',async t=>{
+  const f=await setup(t);await f.create();const player=await f.joinPlayer('玩家');const id=await f.register(player);
+  await f.owner.command('character.patch',{actorId:id,patch:{manual:{maxHp:31,proficiency:-2},hp:{current:7,max:31,temp:2},notes:'原卡私人备注'}});
+  const source=(await f.owner.state()).state.actors.find(a=>a.id===id)!;
+  const copied=await f.owner.command('character.copyFree',{actorId:id});
+  const actors=copied.body.snapshot.state.actors;assert.deepEqual(actors.find((a:any)=>a.id===id),source);
+  const copy=actors.find((a:any)=>a.id!==id);assert.ok(copy);assert.equal(copy.registration,'available');assert.equal(copy.hidden,true);assert.equal(copy.hp.current,7);assert.equal(copy.manual.proficiency,-2);
+  assert.equal(copy.choices.copySourceActorId,id);assert.ok(copy.choices.copySourceHash);
+  assert.equal((await player.state()).state.actors.length,1);await player.command('character.copyFree',{actorId:id},undefined,403);
+});
