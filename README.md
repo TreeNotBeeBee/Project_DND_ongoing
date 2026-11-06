@@ -6,7 +6,7 @@
 
 中文桌面 / 手机冒险桌 · 真人 GM / AI 主持 / 自由共创 · Windows x64
 
-[快速开始](#开始试跑) · [房主与玩家指南](docs/QUICK_START.md) · [世界规则](docs/WORLD_MODES.md) · [AI 交换协议](docs/AI_PROTOCOL.md) · [备份与恢复](docs/BACKUP.md)
+[快速开始](#开始试跑) · [房主与玩家指南](docs/QUICK_START.md) · [世界规则](docs/WORLD_MODES.md) · [AI 交换协议](docs/AI_PROTOCOL.md) · [备份与恢复](docs/BACKUP.md) · [验收记录](docs/VERIFICATION.md)
 
 </div>
 
