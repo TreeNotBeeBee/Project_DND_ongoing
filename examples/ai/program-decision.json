@@ -1,0 +1,9 @@
+{
+  "protocol": "jigerpg-ai",
+  "version": 1,
+  "packetType": "decision",
+  "campaignId": "example-campaign",
+  "exchangeId": "example-exchange",
+  "worldRevision": 1,
+  "payload": { "decisionId": "program-round-1", "completeRound": true, "steps": [{ "id": "approve-action", "type": "intent", "intentId": "intent-id", "approve": true }], "narratives": [{ "text": "旅人按计划释放火花，具体命中和伤害由平台结算。", "actorIds": ["hero-id"] }] }
+}

@@ -1,0 +1,9 @@
+{
+  "protocol": "jigerpg-ai",
+  "version": 1,
+  "packetType": "decision",
+  "campaignId": "example-campaign",
+  "exchangeId": "example-exchange",
+  "worldRevision": 1,
+  "payload": { "decisionId": "ai-round-1", "completeRound": true, "steps": [{ "id": "approve-action", "type": "intent", "intentId": "intent-id", "approve": true, "rollId": "attack-dice" }], "aiRolls": [{ "id": "attack-dice", "expression": "1d20+1d6", "rolls": [12, 4], "total": 16 }], "narratives": [{ "text": "火花沿计划指向目标，平台验证命中与伤害计算。", "actorIds": ["hero-id"] }] }
+}

@@ -1,0 +1,9 @@
+{
+  "protocol": "jigerpg-ai",
+  "version": 1,
+  "packetType": "decision",
+  "campaignId": "example-campaign",
+  "exchangeId": "example-exchange",
+  "worldRevision": 2,
+  "payload": { "decisionId": "reaction-damage-1", "completeRound": false, "steps": [{ "id": "supply-requested-reaction", "type": "command", "rollId": "remaining-damage", "command": { "type": "choice.resolve", "payload": { "choiceId": "choice-id", "optionId": "decline" } } }], "aiRolls": [{ "id": "remaining-damage", "expression": "1d6", "rolls": [4], "total": 4 }] }
+}

@@ -1,0 +1,9 @@
+{
+  "protocol": "jigerpg-ai",
+  "version": 1,
+  "packetType": "decision",
+  "campaignId": "example-campaign",
+  "exchangeId": "example-exchange",
+  "worldRevision": 1,
+  "payload": { "decisionId": "request-investigation-1", "completeRound": false, "steps": [{ "id": "investigation", "type": "roll", "expression": "1d20+3", "rollId": "investigation-die-1" }] }
+}

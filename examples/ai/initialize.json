@@ -1,0 +1,34 @@
+{
+  "protocol": "jigerpg-ai",
+  "version": 1,
+  "packetType": "initialize",
+  "campaignId": "example-campaign",
+  "exchangeId": "example-exchange",
+  "worldRevision": 0,
+  "payload": {
+    "decisionId": "initialize-forest-1",
+    "lore": "迷雾林地里的一处小村庄，玩家可自由探索、采集和交涉。",
+    "secretLore": "北侧废塔下藏着失落的泉眼。",
+    "rules": {
+      "energy": { "maximum": 10, "initial": 10, "perRound": 6, "recoveryMode": "round", "recovery": 2 },
+      "costs": { "move": 0.5, "action": 2, "narrative": 0, "proposal": 1 },
+      "conflict": { "kind": "cancel-refund" },
+      "growth": { "kind": "global", "tracks": [{ "id": "adventure", "name": "冒险", "curve": [10, 20, 40], "pointsPerLevel": 2, "upgrades": [{ "target": "str", "cost": 1, "amount": 1, "max": 20 }, { "target": "mp", "cost": 1, "amount": 2 }] }] },
+      "recipes": []
+    },
+    "characters": [{
+      "id": "hero-template",
+      "name": "林间旅人",
+      "profile": "free",
+      "abilities": { "str": 10, "dex": 12, "con": 12, "int": 16, "wis": 10, "cha": 10 },
+      "manual": { "maxHp": 20, "proficiency": 2, "ac": 12, "speed": 30 },
+      "resources": [{ "id": "mp", "name": "法力", "current": 10, "max": 10, "recovery": "long" }, { "id": "stamina", "name": "体力", "current": 5, "max": 5, "recovery": "short" }, { "id": "shield", "name": "护盾", "current": 4, "max": 4, "recovery": "manual" }],
+      "story": "为寻找失踪的朋友来到村庄。",
+      "customActions": [{ "id": "custom:ember", "name": "火花", "source": "custom", "economy": "action", "range": 60, "attack": { "ability": "int", "bonus": 5 }, "damage": [{ "formula": "1d6", "type": "fire", "addAbility": "int" }], "costs": [{ "resourceId": "mp", "amount": 2 }], "description": "智力命中，独立添加智力伤害。", "automation": "automatic" }]
+    }],
+    "npcs": [{ "id": "guide", "name": "向导", "profile": "free", "position": { "x": 3, "y": 3 }, "story": "熟悉林地道路。" }],
+    "items": [{ "id": "crystal", "name": "微光晶石", "description": "装备时提升法力上限。", "bonuses": { "mp": 2 } }],
+    "nodes": [{ "id": "shrine", "name": "旧祭坛", "position": { "x": 8, "y": 8 }, "inventory": [{ "itemId": "crystal", "quantity": 2 }] }],
+    "npcBehaviors": [{ "actorId": "guide", "kind": "idle" }]
+  }
+}

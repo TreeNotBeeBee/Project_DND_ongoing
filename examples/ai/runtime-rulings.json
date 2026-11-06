@@ -1,0 +1,21 @@
+{
+  "protocol": "jigerpg-ai",
+  "version": 1,
+  "packetType": "decision",
+  "campaignId": "example-campaign",
+  "exchangeId": "example-exchange",
+  "worldRevision": 3,
+  "payload": {
+    "decisionId": "chapter-reward-1",
+    "completeRound": false,
+    "steps": [
+      { "id": "merchant", "type": "command", "command": { "type": "actor.create", "payload": { "id": "new-merchant", "name": "旅行商人", "profile": "free", "story": "携带远方消息的商人。" } } },
+      { "id": "chapter", "type": "ruling", "command": { "type": "world.configure", "payload": { "lore": "村庄完成祭坛调查，旅行商人抵达。" } } },
+      { "id": "reward", "type": "command", "command": { "type": "inventory.add", "actorId": "hero-id", "payload": { "contentId": "world:crystal", "quantity": 1 } } },
+      { "id": "knowledge", "type": "command", "command": { "type": "knowledge.unlock", "actorId": "hero-id", "payload": { "entryId": "world:crystal" } } },
+      { "id": "growth", "type": "ruling", "command": { "type": "growth.award", "actorId": "hero-id", "payload": { "awards": [{ "trackId": "adventure", "amount": 10 }] } } },
+      { "id": "blessing", "type": "ruling", "command": { "type": "character.patch", "actorId": "hero-id", "payload": { "patch": { "manual": { "maxHp": 22 }, "hp": { "current": 20 } } } } }
+    ],
+    "narratives": [{ "text": "作为祭坛调查的奖励，商人交付一枚晶石，泉眼的祝福增强旅人的生命。", "actorIds": ["hero-id", "new-merchant"] }]
+  }
+}
