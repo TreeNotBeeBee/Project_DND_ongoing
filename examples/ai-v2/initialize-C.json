@@ -1,0 +1,135 @@
+{
+  "protocol": "jigerpg-ai",
+  "version": 2,
+  "packetType": "initialize",
+  "campaignId": "example-campaign",
+  "exchangeId": "example-exchange",
+  "displayRevision": 0,
+  "payload": {
+    "decisionId": "module-initialize-C",
+    "initialization": {
+      "freedom": "C",
+      "rules": {
+        "edition": "5e2024",
+        "moduleId": "example-module",
+        "title": "模组标题占位",
+        "fields": {
+          "summary": {
+            "value": "由房主提供的模组规则摘要占位。",
+            "source": "module",
+            "visibility": "public"
+          }
+        }
+      },
+      "pcs": [
+        {
+          "id": "pc-traveler",
+          "kind": "pc",
+          "name": "旅人",
+          "source": "module",
+          "visibility": "public",
+          "fields": {
+            "hp": {
+              "value": {
+                "current": -3,
+                "max": 10
+              },
+              "source": "ai",
+              "visibility": "public"
+            },
+            "resources": {
+              "value": {
+                "mp": {
+                  "current": 50,
+                  "max": 5
+                }
+              },
+              "source": "ai"
+            },
+            "background": {
+              "value": "只有玩家本人默认看到的背景。",
+              "source": "module",
+              "visibility": "private",
+              "audience": [
+                "pc-traveler"
+              ]
+            },
+            "unknownFact": {
+              "value": null,
+              "source": "unknown"
+            }
+          }
+        }
+      ],
+      "background": {
+        "fields": {
+          "summary": {
+            "value": "背景原文占位。",
+            "source": "module"
+          },
+          "secret": {
+            "value": "房主秘密背景占位。",
+            "source": "module",
+            "visibility": "gm"
+          }
+        }
+      },
+      "setting": {
+        "fields": {
+          "world": {
+            "value": {
+              "region": "古道",
+              "tone": "探索"
+            },
+            "source": "module"
+          }
+        },
+        "entities": [
+          {
+            "id": "landmark-door",
+            "kind": "landmark",
+            "name": "旧门",
+            "source": "module",
+            "visibility": "public",
+            "fields": {
+              "landmarkType": {
+                "value": "door",
+                "source": "module"
+              },
+              "description": {
+                "value": "尚未在地图放置的公开地标。",
+                "source": "module"
+              }
+            }
+          }
+        ],
+        "map": {
+          "width": 1024,
+          "height": 768,
+          "visibility": "public"
+        }
+      },
+      "opening": {
+        "fields": {
+          "scene": {
+            "value": "开幕场景原文占位。",
+            "source": "module"
+          },
+          "secret": {
+            "value": "开幕的房主秘密占位。",
+            "source": "module",
+            "visibility": "gm"
+          }
+        },
+        "narratives": [
+          {
+            "id": "opening-1",
+            "text": "AI补充的开幕描写，A模式须单项确认。",
+            "source": "ai",
+            "visibility": "public"
+          }
+        ]
+      }
+    }
+  }
+}

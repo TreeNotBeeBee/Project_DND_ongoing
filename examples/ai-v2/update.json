@@ -1,0 +1,16 @@
+{
+  "protocol": "jigerpg-ai",
+  "version": 2,
+  "packetType": "update",
+  "campaignId": "example-campaign",
+  "exchangeId": "example-exchange",
+  "displayRevision": 1,
+  "payload": {
+    "decisionId": "display-update-1",
+    "patches": [
+      { "op": "upsert", "target": "entity", "id": "enemy-1", "value": { "id": "enemy-1", "kind": "enemy", "name": "守卫", "source": "ai", "visibility": "public", "position": { "x": 0.6, "y": 0.4 }, "fields": { "hp": { "value": { "current": 0, "max": 30 }, "source": "ai" }, "condition": { "value": "由AI给出的展示状态；平台不从HP自动推导。", "source": "ai" } } } },
+      { "op": "upsert", "target": "narrative", "id": "scene-2", "value": { "id": "scene-2", "text": "AI给出的下一幕描述。", "source": "ai", "visibility": "public", "actorIds": ["enemy-1"] } },
+      { "op": "delete", "target": "narrative", "id": "opening-1" }
+    ]
+  }
+}

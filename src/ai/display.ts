@@ -90,6 +90,10 @@ function prepareEntity(d: AiDisplayState, entity: AiDisplayEntity): AiDisplayEnt
 }
 function prepareNarrative(d: AiDisplayState, n: AiDisplayNarrative): AiDisplayNarrative { const result = structuredClone(n); if (d.freedom === 'A' && n.source !== 'module') { if (n.source === 'ai') pending(d, ['narratives', n.id, 'text'], n.text); result.text = ''; } return result; }
 function assignPending(d: AiDisplayState, path: string[], value: DisplayJson) {
+  if (path.at(-1) === 'image') displayImageSchema.parse(value);
+  if (path.at(-1) === 'position') displayPositionSchema.parse(value);
+  if (path.at(-1) === 'name') z.string().max(1000).parse(value);
+  if (path.at(-1) === 'text') z.string().max(100_000).parse(value);
   let parent: any = d;
   for (let index = 0; index < path.length - 1; index++) { const part = path[index]; if (index === 1 && ['entities', 'narratives'].includes(path[0])) parent = parent.find((entry: any) => entry.id === part); else parent = own(parent, part); check(parent && typeof parent === 'object', 'AI_DISPLAY_CONFIRMATION', '待确认目标已被后续更新移除'); }
   parent[path.at(-1)!] = structuredClone(value); if (path.at(-1) === 'value') delete parent.pending;
