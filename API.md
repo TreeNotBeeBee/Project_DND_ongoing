@@ -1,4 +1,23 @@
-# New platform contract
+# JigeRPG platform contract
+
+The production client uses the world contract described below. The original native command API remains available for historical compatibility and trusted engine calls, with world-mode gates enforced by the server.
+
+## World contract (v2)
+
+- POST `/api/campaigns` `{name,gmName,hostToken,mode:'gm'|'ai'|'co-create',governance?:{system:'democracy'|'dictatorship',ownerVeto:boolean}}`. Mode, owner and governance are fixed at creation. Omission of mode is reserved for legacy compatibility.
+- `Snapshot` includes `world`, visible `tokens`, minimal `offers`, opted-in public `profiles`, and server-derived `actorViews` including effective `energyLimits`. Non-owners receive only their full registered hero / controlled companion cards. GM-only effects and choices remain filtered even on their own card.
+- GET `/api/content` returns the owner's catalog or entries individually unlocked by the current member's actors; unauthenticated clients receive no entries. No complete hidden content catalog ships in the production JS bundle.
+- Character commands: `character.create {actor?}`, `character.copyFree {actorId}`, `character.claim {actorId}`, `character.register {actorId,approved,memberId?}`, `character.release {actorId}`, `character.patch {actorId,patch}`, `profile.update {actorId,portrait?,publicGroups?}`, `knowledge.unlock {actorId,entryId}`. Sources remain unchanged on copy. Heroes use available/requested/registered states; one registered hero per member.
+- World commands: `world.configure {rules?,lore?,secretLore?,items?,nodes?,npcBehaviors?}`, `world.start`, `intent.save {intent}`, `intent.delete {id}`, `turn.end`, `turn.withdraw`, `intent.review {intentId,approve}` (human GM), `round.settle` (human GM/co-create), `round.start`, `growth.spend {actorId,trackId,target,points}`. AI ordinary actions execute through owner-confirmed packet steps.
+- Governance: `draft.save {draft:{id?,kind,title,payload}}`, `draft.delete {id}`, `proposal.submit {draftId}`, `vote.cast {proposalId,vote}`, `vote.preference {value}`, `proposal.decide {proposalId,approve}`, `governance.grant {memberId,capabilities}`. Drafts may be partial; publication is strict. Ballot electorate is frozen at opening; approved changes apply at the next round.
+- POST `/api/assets` `{dataUrl}` -> `{id,url,mime,bytes}`. PNG/JPEG/WebP/GIF, maximum 4 MiB decoded. GET `/api/assets/:id` requires session and uploader/owner/currently-visible reference authorization. Full campaign exports contain image bytes with hashes; restore is transactional.
+- POST `/api/ai/export` `{kind:'initialize'|'player_selection'|'turn_context'|'roll_results',exchangeId?}` -> `{packet,schema,prompt}`. Owner-only. Persisted exchange receipt increments state revision but not gameplay revision. `turn_context` waits for online frozen participants to finish.
+- POST `/api/ai/preview` `{packet}` -> `{valid,errors,summary,packet?}`; pure validation without consuming random dice.
+- `ai.configure {diceSource:'program'|'ai'}` and `ai.apply {packet}` run through `/api/command` with the standard operation ID/version envelope. Import is atomic and decision IDs are persistent and idempotent. See [AI protocol](docs/AI_PROTOCOL.md) and [world semantics](docs/WORLD_MODES.md).
+
+All commands use `Command {operationId,expectedRev,type,actorId?,targetIds?,payload?}`. Repeating an operation ID requires byte-equivalent command content. Stale versions return `409 stale_revision` with a new snapshot; definite character-claim conflicts reject without trapping the client queue. Unknown ACK outcomes retain the original ID.
+
+## Native/legacy contract
 
 All API paths are same-origin. HttpOnly cookie sessions; mutations validate Origin and JSON. Browser sends `X-Jige-Request: 1`.
 
