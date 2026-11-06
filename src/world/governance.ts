@@ -49,7 +49,7 @@ export function openProposal(state: GameState, draft: WorldDraft, command: Comma
   assert(electorate.length <= 12, 'WORLD_ELECTORATE', '投票名单不能超过本房间12位成员');
   const proposal: WorldProposal = {
     id: `proposal:${command.operationId}`, draftId: draft.id, authorId: draft.ownerId, title: draft.title, kind: draft.kind, payload: structuredClone(draft.payload),
-    electorate, ballots: {}, opensAt: ctx.now, closesAt: ctx.now + Math.ceil((world.rules.proposalHours ?? 24) * HOUR_MS), status: 'open',
+    electorate, ballots: {}, opensAt: ctx.now, closesAt: ctx.now + Math.ceil((world.rules.proposalHours ?? 24) * HOUR_MS), status: world.mode === 'co-create' ? 'open' : 'owner-review',
   };
   assert(!world.proposals.some(entry => entry.id === proposal.id), 'WORLD_DUPLICATE', '此提案已经提交');
   assert(world.proposals.length < 2000, 'WORLD_LIMIT', '提案数量已达上限，请归档世界后继续');
@@ -90,7 +90,10 @@ export function handleGovernance(state: GameState, command: Command, member: Mem
     case 'proposal.decide': {
       const proposal = world.proposals.find(proposal => proposal.id === p.proposalId);
       assert(proposal && ['open', 'owner-review'].includes(proposal.status), 'WORLD_PROPOSAL', '此提案不再等待裁定'); assert(typeof p.approve === 'boolean', 'WORLD_VOTE', '请明确批准或否决');
-      if (world.governance.system === 'dictatorship') {
+      if (world.mode !== 'co-create') {
+        requireOwner(world, member); proposal.ownerDecision = p.approve;
+        if (p.approve) approve(world, proposal, log); else reject(proposal, log, '主持人否决');
+      } else if (world.governance.system === 'dictatorship') {
         requireCapability(world, member, reviewCapability(proposal.kind)); proposal.ownerDecision = p.approve;
         if (p.approve) approve(world, proposal, log); else reject(proposal, log, '授权审批人否决');
       } else {
