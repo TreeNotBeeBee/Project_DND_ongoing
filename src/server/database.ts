@@ -5,9 +5,10 @@ import { existsSync,createReadStream } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import { newWorld } from '../shared/world';
 
-export const SCHEMA_VERSION = 1;
-export const CODE_VERSION = '1.0.0';
+export const SCHEMA_VERSION = 2;
+export const CODE_VERSION = '2.0.0-beta.1';
 export type GameDatabase = Database.Database;
 
 export function codeCommit() {
@@ -77,7 +78,23 @@ export async function openDatabase(dataDirectory: string, lock = true) {
         CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, member_id TEXT NOT NULL REFERENCES members(id) ON DELETE CASCADE, expires_at INTEGER NOT NULL);
         CREATE TABLE IF NOT EXISTS operations (campaign_id TEXT NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE, member_id TEXT NOT NULL, operation_id TEXT NOT NULL, command_type TEXT NOT NULL, command_json TEXT NOT NULL, before_state TEXT NOT NULL, events TEXT NOT NULL, undone INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, PRIMARY KEY(campaign_id,member_id,operation_id));
         CREATE TABLE IF NOT EXISTS migrations (campaign_id TEXT NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE, fingerprint TEXT NOT NULL, member_id TEXT NOT NULL, report TEXT NOT NULL, PRIMARY KEY(campaign_id,fingerprint));
+        CREATE TABLE IF NOT EXISTS assets (id TEXT PRIMARY KEY, campaign_id TEXT NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE, owner_id TEXT NOT NULL, mime TEXT NOT NULL, sha256 TEXT NOT NULL, bytes BLOB NOT NULL, created_at TEXT NOT NULL, UNIQUE(campaign_id,owner_id,sha256));
       `);
+      if (version < 2) {
+        const update = db!.prepare('UPDATE campaigns SET state=? WHERE id=?');
+        for (const row of db!.prepare('SELECT id,state FROM campaigns').all() as { id: string; state: string }[]) {
+          const state = JSON.parse(row.state);
+          const owner = db!.prepare("SELECT id FROM members WHERE campaign_id=? AND role='gm'").get(row.id) as { id: string } | undefined;
+          if (!state.world && owner) {
+            state.world = newWorld(owner.id, 'gm');
+            for (const actor of state.actors || []) if (actor.kind === 'hero') {
+              actor.registration = 'requested'; actor.requestedBy = actor.ownerId; actor.hidden = true;
+              actor.publicGroups ||= []; actor.knownEntries ||= [];
+            }
+            update.run(JSON.stringify(state), row.id);
+          }
+        }
+      }
       db!.prepare('INSERT OR IGNORE INTO metadata(key,value) VALUES (?,?)').run('serverId', randomUUID());
       db!.prepare('INSERT OR REPLACE INTO metadata(key,value) VALUES (?,?)').run('codeVersion', CODE_VERSION);
       db!.prepare('INSERT OR REPLACE INTO metadata(key,value) VALUES (?,?)').run('gitCommit', codeCommit());
