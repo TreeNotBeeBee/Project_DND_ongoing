@@ -109,3 +109,15 @@ test('PC disclosure and avatar changes are bound to the owner, persist separatel
   await f.restart();
   assert.equal((await f.other.request('/api/state')).data.world.ai.display.entities.find((entity: any) => entity.id === 'hero').image, image);
 });
+
+test('the owner chooses AI or program dice instructions without delegating numerical settlement to the engine', async t => {
+  const f = await setup(t); await initialize(f);
+  assert.equal((await f.player.command('ai.display.dice.source', { diceSource: 'ai' })).status, 400);
+  assert.equal((await f.owner.command('ai.display.dice.source', { diceSource: 'ai' })).status, 200);
+  const ai = await f.owner.request('/api/ai/export', { kind: 'turn_context' });
+  assert.equal(ai.data.packet.payload.diceSource, 'ai'); assert.match(ai.data.prompt, /当前骰源为AI/);
+  assert.equal((await f.owner.command('ai.display.dice.source', { diceSource: 'program' })).status, 200);
+  const program = await f.owner.request('/api/ai/export', { kind: 'turn_context' });
+  assert.equal(program.data.packet.payload.diceSource, 'program'); assert.match(program.data.prompt, /当前骰源为程序/);
+  assert.deepEqual((await f.owner.request('/api/state')).data.world.ai.display.entities[0].fields.hp.value, { current: -5, max: 2 });
+});
