@@ -25,7 +25,7 @@ export function resolveWorldCommand(input: GameState, command: Command, member: 
   switch (command.type) {
     case 'world.configure':
       requireOwner(world, member);
-      assert(world.phase === 'setup' || world.mode !== 'co-create' || world.governance.system === 'dictatorship', 'WORLD_PROPOSAL_REQUIRED', '民主共创开始后，世界内容必须通过提案投票修改');
+      assert(world.phase === 'setup' || world.mode === 'gm' || world.mode === 'co-create' && world.governance.system === 'dictatorship', 'WORLD_PROPOSAL_REQUIRED', '世界开始后，AI模式须通过决策包、民主共创须通过提案修改内容');
       configureWorld(state, p, ctx); note(events, 'world-configured', '房主已配置世界规则与内容'); break;
     case 'world.start': {
       requireOwner(world, member); assert(world.phase === 'setup', 'WORLD_PHASE', '世界已经开始，不能重复初始化行动力'); assert(!state.combat.active, 'WORLD_COMBAT', '请先结束传统战斗再开始统一世界回合');

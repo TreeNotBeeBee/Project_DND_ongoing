@@ -22,7 +22,7 @@ export function capabilities(state: GameState, member: Member): Capability[] {
 function permission(state: GameState, member: Member, capability: Capability, runtime = true) {
   const w = state.world!;
   const allowed = capabilities(state, member).includes(capability);
-  if (!allowed || runtime && w.phase === 'running' && (w.mode === 'ai' || w.mode === 'co-create' && w.governance.system === 'democracy') && capability === 'manage.characters') throw new ApiError(403, 'world_permission', '当前模式下此修改需要GM决策或通过提案，不能直接改值');
+  if (!allowed || runtime && w.phase === 'running' && (w.mode === 'ai' || w.mode === 'co-create' && w.governance.system === 'democracy') && ['manage.characters','manage.knowledge'].includes(capability)) throw new ApiError(403, 'world_permission', '当前模式下此修改需要GM决策或通过提案，不能直接改值');
 }
 function finite(value: unknown, label: string, min = -1e9, max = 1e9) { if (typeof value !== 'number' || !Number.isFinite(value) || value < min || value > max) throw new ApiError(400, 'invalid_value', `${label}不是允许范围内的有限数值`); return value; }
 function picture(value: unknown): string { if (value === '' || value === undefined || value === null) return ''; if (typeof value !== 'string' || value.length > 3_000_000 || !/^(https:\/\/|data:image\/(png|jpe?g|webp|gif);base64,|\/api\/assets\/)/i.test(value)) throw new ApiError(400, 'invalid_portrait', '头像必须是HTTPS图片或已上传图片'); return value; }
@@ -82,7 +82,7 @@ export function resolveCharacterCommand(input: GameState, command: Command, memb
       permission(state, member, 'manage.members', false); changed = actorBy(state, id);
       const target = String(p.memberId || changed.requestedBy || '');
       if (!members.some(m => m.id === target) || changed.kind !== 'hero') throw new ApiError(400, 'invalid_registration', '请选择该房间成员和主角');
-      if (p.approved === false) { changed.registration = 'available'; delete changed.requestedBy; message = '角色领取申请已退回'; break; }
+      if (p.approved === false) { if(changed.registration!=='requested')throw new ApiError(400,'invalid_registration','只能退回待批准的领取申请；已注册角色请使用归还流程'); changed.registration = 'available'; delete changed.requestedBy; message = '角色领取申请已退回'; break; }
       if (!['available', 'requested'].includes(changed.registration || '') || state.actors.some(a => a.id !== changed!.id && a.kind === 'hero' && a.ownerId === target && a.registration === 'registered')) throw new ApiError(409, 'already_registered', '该角色或该成员已有注册绑定');
       const problems = [...engine.validateActor(changed), ...(changed.profile === 'free' ? [] : engine.validateBuild(changed))];
       if (problems.length) throw new ApiError(400, 'invalid_character', problems.join('；'));

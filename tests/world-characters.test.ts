@@ -68,3 +68,11 @@ test('modern projection never reintroduces GM-only effects, adjudication payload
   for(const secret of ['SECRET_LATENT_POISON','SECRET_HIDDEN_CREATURE','SECRET_ADJUDICATION','SECRET_ENGINE_CONTINUATION',hidden.id])assert.ok(!JSON.stringify(view).includes(secret),secret);
   assert.deepEqual(view.state!.choices.map(c=>c.id),['player-choice']);assert.deepEqual(view.state!.choices[0].payload,{});
 });
+
+test('knowledge changes respect runtime modes and rejecting an application cannot release a registered card',()=>{
+  const state=register(fresh(),'p1'),actor=state.actors[0];
+  assert.throws(()=>apply(state,'owner','character.register',{actorId:actor.id,memberId:'p1',approved:false}),/归还流程/);
+  for(const mode of ['ai','co-create'] as const){state.world!.mode=mode;state.world!.phase='running';assert.throws(()=>apply(state,'owner','knowledge.unlock',{actorId:actor.id,entryId:'monster:tarrasque'}),/决策或通过提案/);}
+  state.world!.governance.system='dictatorship';state.world!.governance.delegations.p2=['manage.knowledge'];
+  const result=apply(state,'p2','knowledge.unlock',{actorId:actor.id,entryId:'monster:tarrasque'});assert.deepEqual(result.actors[0].knownEntries,['monster:tarrasque']);
+});
