@@ -21,7 +21,8 @@ export async function api<T>(path: string, body?: unknown, headers: Record<strin
 export interface PendingCommand { command: Command; label: string; status: 'queued' | 'sending' | 'conflict' | 'rejected'; error?: string; outcomeUnknown?: boolean }
 
 function definiteRejection(reason: unknown): reason is ApiError {
-  return reason instanceof ApiError && [400, 401, 403, 404, 405, 413, 415, 422].includes(reason.status)
+  const semanticConflicts = ['already_claimed','character_taken','already_registered','scene_full','pending_intent','nothing_to_undo','undo_order'];
+  return reason instanceof ApiError && ([400, 401, 403, 404, 405, 413, 415, 422].includes(reason.status) || reason.status === 409 && semanticConflicts.includes(reason.body?.code))
     && typeof reason.body?.code === 'string' && reason.body.code.length > 0 && typeof reason.body.error === 'string';
 }
 type Connection = 'connecting' | 'online' | 'offline';

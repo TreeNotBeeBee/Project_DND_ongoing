@@ -44,6 +44,17 @@ test('a real permission 403 is reported without preventing a subsequent legal pl
  const f=await fixture(t),invite=(await snapshot(f.page)).inviteCode!,player=await f.open();assert.equal(await player.evaluate(invite=>(window as unknown as ProbeWindow).probe.authenticate('join',{inviteCode:invite,name:'Player'}),invite),true);await expect.poll(async()=>(await snapshot(player))?.session.member.role).toBe('player');const count=f.count();
  assert.equal(await command(player,'gm.pause',undefined,{paused:true}),false);await expect(player.locator('#error')).toContainText('只有主持人');assert.equal((await pending(player)).length,0);assert.equal(f.count(),count);assert.equal(await command(player,'actor.create',undefined,{name:'Own draft',draft:true}),true);assert.equal((await snapshot(player)).state.actors[0].name,'Own draft');
 });
+
+test('a definite character-claim 409 clears its rejected request while preserving future legal commands',async t=>{
+ const f=await fixture(t);
+ assert.equal(await f.page.evaluate(()=>(window as unknown as ProbeWindow).probe.authenticate('create',{name:'Modern claims',gmName:'Owner',mode:'gm'})),true);
+ assert.equal(await command(f.page,'character.create'),true);const actor=(await snapshot(f.page)).offers![0];
+ assert.equal(await command(f.page,'character.claim',undefined,{actorId:actor.id}),true);
+ assert.equal(await command(f.page,'character.claim',undefined,{actorId:actor.id}),false);
+ assert.equal((await pending(f.page)).length,0);await expect(f.page.locator('#error')).toContainText('已领取或正在申请');
+ assert.equal(await command(f.page,'character.register',undefined,{actorId:actor.id,approved:true}),true);
+ assert.equal((await snapshot(f.page)).state.actors[0].registration,'registered');
+});
 test('a real revision 409 retains explicit conflict review and rebases only after user confirmation',async t=>{
  const f=await fixture(t);await command(f.page,'actor.create',undefined,{name:'Conflict draft',draft:true});const before=await snapshot(f.page),actor=before.state.actors[0];
  await f.page.route('**/api/command',async route=>{const old=JSON.parse(route.request().postData()!);await f.page.request.post(new URL('/api/command',f.page.url()).href,{headers:{Origin:new URL(f.page.url()).origin,'X-Jige-Request':'1'},data:{operationId:randomUUID(),expectedRev:old.expectedRev,type:'gm.pause',payload:{paused:false}}});await route.continue();},{times:1});
