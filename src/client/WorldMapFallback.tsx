@@ -6,7 +6,7 @@ import { tokenCentre, tokenSideCells, tokenFootprint, lineOfSight, actorColor, a
 
 
 const CELL = 48;
-const isImage = (source?: string) => Boolean(source && /^(https?:|data:image\/)/i.test(source));
+const isImage = (source?: string) => Boolean(source && /^(https?:|\/api\/assets\/|data:image\/)/i.test(source));
 interface TokenProps { actor: Actor; gridFeet: number; selected: boolean; active: boolean; targeted: boolean; onPortraitResult: (id: string, source: string, loaded: boolean) => void }
 function FallbackToken({ actor, gridFeet, selected, active, targeted, onPortraitResult }: TokenProps) {
   const clipId = 'map-portrait-' + useId().replace(/:/g, '');

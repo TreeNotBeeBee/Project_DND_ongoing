@@ -26,6 +26,9 @@ function canOccupy(scene: Scene, actor: TokenView, position: Position, actors: T
   if (actors.some(other => other.id !== actor.id && !other.dead && tokenCells(other, other.position, scene.gridFeet).some(cell => cells.some(point => cell.x === point.x && cell.y === point.y)))) return false;
   return cells.every(cell => (cell.x >= position.x + side - 1 || lineOfSight(scene, cell, { x: cell.x + 1, y: cell.y })) && (cell.y >= position.y + side - 1 || lineOfSight(scene, cell, { x: cell.x, y: cell.y + 1 })));
 }
+export function routeCost(scene: Scene, actor: TokenView, path: Position[]): number {
+  return path.reduce((total, position) => total + 1 + Number(actor.conditions.includes('prone')) + Number(tokenCells(actor, position, scene.gridFeet).some(point => scene.terrain.some(terrain => terrain.type === 'difficult' && point.x >= terrain.x && point.y >= terrain.y && point.x < terrain.x + terrain.width && point.y < terrain.y + terrain.height))), 0);
+}
 /** Client-only route preview. The server independently validates movement and AP. */
 export function pathBetween(from: Position, to: Position, scene: Scene, _unused: Position[] = [], options: { actor: TokenView; actors: TokenView[]; crawling?: boolean }): Position[] {
   if (![from.x, from.y, to.x, to.y].every(Number.isInteger) || !canOccupy(scene, options.actor, to, options.actors)) return [];

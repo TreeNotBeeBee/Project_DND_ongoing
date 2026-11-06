@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ActionDefinition, Position, Scene } from '../shared/model';
 import type { TokenView as Actor } from '../shared/world';
 import { areaContains, resolveSpellArea } from '../shared/spell-geometry';
-import { lineOfSight, tokenCells, tokenCentre, tokenSideCells, tokenFootprint, actorColor, actorInitial, pathBetween } from './world-map-geometry';
+import { lineOfSight, tokenCells, tokenCentre, tokenSideCells, tokenFootprint, actorColor, actorInitial, pathBetween, routeCost } from './world-map-geometry';
 
 
 import { WorldMapFallback as MapFallback } from './WorldMapFallback';
@@ -15,6 +15,7 @@ interface Props {
   activeId?: string; onSelect: (id: string) => void; onTarget: (id: string) => void;
   onMove: (actor: Actor, path: Position[]) => void; onScene: (scene: Scene) => void;
   onOrigin: (position: Position) => void; origin?: Position; areaAction?: ActionDefinition; disabled?: boolean;
+  canEditScene?: boolean; moveCost?: number; remainingAP?: number;
 }
 const CELL = 48;
 const TOOLS: [MapTool, string, string][] = [['select', '↖', '选择'], ['move', '✥', '移动'], ['target', '◎', '目标'], ['pan', '✋', '平移'], ['area', '◌', '范围'], ['wall', '╱', '墙体'], ['door', '▯', '门'], ['terrain', '▧', '地形'], ['erase', '⌫', '擦除']];
@@ -44,6 +45,8 @@ export function WorldMap(props: Props) {
     if (props.disabled) return;
     const path = routeFor(actor, destination);
     if (!path.length) { setHint('这里没有能容纳整枚棋子的路径；请检查占位、边界、墙与门。'); return; }
+    const cost = routeCost(props.scene, actor, path.slice(1)) * (props.moveCost || 0);
+    if (props.remainingAP !== undefined && cost > props.remainingAP) { setHint(`这条路径预计消耗 ${cost} AP，超过本轮剩余 ${props.remainingAP} AP。`); return; }
     if (path.length > 1) props.onMove(actor, path.slice(1));
   };
   useEffect(() => {
@@ -89,7 +92,7 @@ export function WorldMap(props: Props) {
     }
     board.addChild(floor);
     let disposed = false;
-    if (props.scene.background && /^(https?:|data:image\/)/i.test(props.scene.background)) {
+    if (props.scene.background && /^(https?:|\/api\/assets\/|data:image\/)/i.test(props.scene.background)) {
       void PIXI.Assets.load({ src: props.scene.background, parser: 'texture' }).then((texture: any) => {
         if (disposed || board.destroyed) return;
         setBackgroundFailure(undefined);
@@ -161,7 +164,7 @@ export function WorldMap(props: Props) {
       }
       token.addChild(glyph);
       const label = new PIXI.Text({ text: actorInitial(actor), style: { fontFamily: 'Microsoft YaHei, sans-serif', fontSize: 16, fontWeight: '600', fill: color } }); label.anchor.set(.5); token.addChild(label);
-      if (actor.portrait && /^(https?:|data:image\/)/i.test(actor.portrait)) {
+      if (actor.portrait && /^(https?:|\/api\/assets\/|data:image\/)/i.test(actor.portrait)) {
         const source = actor.portrait;
         void PIXI.Assets.load({ src: source, parser: 'texture' }).then((texture: any) => {
           if (disposed || token.destroyed || board.destroyed) return;
@@ -191,7 +194,7 @@ export function WorldMap(props: Props) {
     const actor = actorAt(position);
     if (tool === 'target') { if (actor) props.onTarget(actor.id); return; }
     if (tool === 'area') { props.onOrigin(position); setHint(`范围原点：${position.x + 1}, ${position.y + 1}`); return; }
-    if (props.gm && ['wall', 'door', 'terrain'].includes(tool)) {
+    if ((props.canEditScene ?? props.gm) && ['wall', 'door', 'terrain'].includes(tool)) {
       if (tool === 'door') {
         const door = props.scene.walls.find(row => row.door && Math.abs((row.a.x + row.b.x) / 2 - position.x) < 1 && Math.abs((row.a.y + row.b.y) / 2 - position.y) < 1);
         if (door && !first) { props.onScene({ ...props.scene, walls: props.scene.walls.map(row => row.id === door.id ? { ...row, open: !row.open } : row) }); return; }
@@ -202,7 +205,7 @@ export function WorldMap(props: Props) {
       else props.onScene({ ...props.scene, walls: [...props.scene.walls, { id: crypto.randomUUID(), a: first, b: position, door: tool === 'door', open: false }] });
       setFirst(null); return;
     }
-    if (props.gm && tool === 'erase') {
+    if ((props.canEditScene ?? props.gm) && tool === 'erase') {
       props.onScene({ ...props.scene, walls: props.scene.walls.filter(row => !(Math.min(row.a.x, row.b.x) - .5 <= position.x && Math.max(row.a.x, row.b.x) + .5 >= position.x && Math.min(row.a.y, row.b.y) - .5 <= position.y && Math.max(row.a.y, row.b.y) + .5 >= position.y)), terrain: props.scene.terrain.filter(row => !(position.x >= row.x && position.y >= row.y && position.x < row.x + row.width && position.y < row.y + row.height)) }); return;
     }
     if (actor && tool !== 'pan') { props.onSelect(actor.id); return; }
@@ -220,7 +223,7 @@ export function WorldMap(props: Props) {
   }, [props.scene.width, props.scene.height, size.width, size.height, Boolean(visibleActors.length)]);
   return <div className="map-shell world-map-shell">
     <div className="map-toolbar" role="toolbar" aria-label="地图工具">
-      {TOOLS.filter(([id]) => props.gm || !['wall', 'door', 'terrain', 'erase'].includes(id)).map(([id, icon, label]) => <button key={id} className={`map-tool ${tool === id ? 'active' : ''}`} title={label} aria-label={label} aria-pressed={tool === id} onClick={() => { setTool(id); setFirst(null); setHint(id === 'wall' || id === 'door' ? '依次点击网格边上的起点、终点。门工具可点击已有门切换开闭。' : id === 'terrain' ? '点击区域的两个对角格设置地形。' : id === 'target' ? '点击棋子选择或取消行动目标。' : id === 'area' ? '点击地图设置法术范围原点。' : '拖动棋子移动，或选择角色后点击空地。'); }}><span>{icon}</span><small>{label}</small></button>)}
+      {TOOLS.filter(([id]) => (props.canEditScene ?? props.gm) || !['wall', 'door', 'terrain', 'erase'].includes(id)).map(([id, icon, label]) => <button key={id} className={`map-tool ${tool === id ? 'active' : ''}`} title={label} aria-label={label} aria-pressed={tool === id} onClick={() => { setTool(id); setFirst(null); setHint(id === 'wall' || id === 'door' ? '依次点击网格边上的起点、终点。门工具可点击已有门切换开闭。' : id === 'terrain' ? '点击区域的两个对角格设置地形。' : id === 'target' ? '点击棋子选择或取消行动目标。' : id === 'area' ? '点击地图设置法术范围原点。' : '拖动棋子移动，或选择角色后点击空地。'); }}><span>{icon}</span><small>{label}</small></button>)}
       {tool === 'terrain' && <select aria-label="地形类型" value={terrainType} onChange={event => setTerrainType(event.target.value as typeof terrainType)}><option value="difficult">困难地形</option><option value="half-cover">半身掩护</option><option value="three-quarter-cover">四分之三掩护</option></select>}
     </div>
     <div ref={host} className={`battle-map tool-${tool}`} tabIndex={0} role="application" aria-label="二维战术地图；方向键移动所选角色，Shift加方向键平移，Escape取消绘制" onContextMenu={event => event.preventDefault()}
@@ -264,6 +267,6 @@ export function WorldMap(props: Props) {
       <div className="map-coordinates">{hover ? `${hover.x + 1} : ${hover.y + 1}` : 'TACTICAL VIEW'}<span>{props.scene.gridFeet} 尺 / 格</span></div>
       <div className="map-zoom"><button aria-label="缩小地图" onClick={() => setCamera(previous => ({ ...previous, zoom: Math.max(.25, previous.zoom / 1.2) }))}>−</button><button onClick={fit} title="适应画布">{Math.round(camera.zoom * 100)}%</button><button aria-label="放大地图" onClick={() => setCamera(previous => ({ ...previous, zoom: Math.min(3, previous.zoom * 1.2) }))}>＋</button></div>
     </div>
-    <div className="map-status"><span className="status-dot" />{hint}{visibleActors.some(actor => actor.portrait && portraitFailures[actor.id] === actor.portrait) && <span role="status">部分角色头像加载失败，已保留文字棋子。</span>}{backgroundFailure && backgroundFailure === props.scene.background && <span role="alert">背景图片加载失败；请检查图片地址与跨域权限，或重新上传本地图片。地图和棋子仍可使用。</span>}<span className="map-renderer">{renderError ? '兼容渲染' : 'PixiJS'} · {props.scene.width} × {props.scene.height}</span></div>
+    <div className="map-status"><span className="status-dot" />{hint}{hover && props.moveCost !== undefined && visibleActors.find(actor => actor.id === props.selectedId) && <span role="status">路径预计 {routeCost(props.scene, visibleActors.find(actor => actor.id === props.selectedId)!, routeFor(visibleActors.find(actor => actor.id === props.selectedId)!, hover).slice(1)) * props.moveCost} AP · 剩余 {props.remainingAP ?? '—'} AP（含地形与爬行）</span>}{visibleActors.some(actor => actor.portrait && portraitFailures[actor.id] === actor.portrait) && <span role="status">部分角色头像加载失败，已保留文字棋子。</span>}{backgroundFailure && backgroundFailure === props.scene.background && <span role="alert">背景图片加载失败；请检查图片地址与跨域权限，或重新上传本地图片。地图和棋子仍可使用。</span>}<span className="map-renderer">{renderError ? '兼容渲染' : 'PixiJS'} · {props.scene.width} × {props.scene.height}</span></div>
   </div>;
 }
