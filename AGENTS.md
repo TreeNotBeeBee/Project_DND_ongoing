@@ -5,7 +5,8 @@
 - Use the latest verified stable dependencies. The project-private Node runtime lives in ignored `.tools/`; do not replace system Node.
 - The app lives at the repository root: `src/{shared,engine,content,server,client}`, `scripts/`, `tests/`, and `reference/`. The retired `origin/` directory must not be restored into published snapshots. Keep the shared model and API contract consistent.
 - Server is authoritative: validated commands, cryptographic dice, version checks, transactional persistence, idempotency and visibility filtering. Never accept client damage totals as authority.
-- Rules baseline is SRD 5.2.1 (2024). Never silently apply legacy formulas or label unsupported deterministic rules as automated.
+- Standard characters use SRD 5.2.1 (2024). Free characters use explicit, persistent manual values and configured actions; never force standard creation requirements on them. Never silently apply legacy formulas or label unsupported deterministic rules as automated.
+- World modes are fixed on creation: human GM, manual AI JSON, or cooperative creation. The persistent world owner is independent of narrative authority. Cooperative governance is democratic (optional owner approval/veto) or dictatorship with revocable scoped delegation. Enforce capabilities and private projections on the server.
 - Legacy import is copy-only, transactional and idempotent. Preserve original bytes and all unconverted fields. Never modify old browser storage keys.
 - Tests must exercise actual behavior and failure modes. Use deterministic injected dice in rules tests.
 - Parallel work uses separate worktrees. Commit only files owned by your task; report commits and checks for sequential integration.

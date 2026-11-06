@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Command, ContentEntry, MigrationReport, Snapshot } from '../shared/model';
-import { prepareCommand, queueKey, validateArchiveBody } from './client-utils';
+import { prepareCommand, queueKey, validateArchiveBody } from './transport-utils';
 
 export class ApiError extends Error {
   constructor(message: string, public status: number, public body: Record<string, any>) { super(message); }

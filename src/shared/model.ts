@@ -20,7 +20,7 @@ export interface Actor {
   hp: { current: number; max: number; temp: number }; deathSaves: { successes: number; failures: number }; dead?: boolean;
   skills: string[]; expertise: string[]; saveProficiencies: Ability[]; languages: string[];
   resources: Resource[]; inventory: ItemInstance[]; spells: string[]; features: string[]; effects: Effect[];
-  position: Position; hidden: boolean; portrait?: string; notes: string; concentration?: string;
+  position: Position; hidden: boolean; portrait?: string; story?: string; notes: string; concentration?: string;
   acOverride?: number; speedOverride?: number; initiative?: number; size?: number;
   draft?: boolean; migrationId?: string; migrationIssues?: string[]; choices?: Record<string, unknown>;
   monsterActions?: ActionDefinition[]; baseAc?: number; baseSpeed?: number; resistances?: DamageType[]; immunities?: DamageType[]; vulnerabilities?: DamageType[];
