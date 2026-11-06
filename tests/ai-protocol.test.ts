@@ -152,3 +152,30 @@ test('external game-effect whitelist rejects unknown payloads, AP tampering, sea
   const democratic = structuredClone(f.state); democratic.world!.mode = 'co-create';
   assert.throws(() => resolveAiGameCommand(democratic, { operationId: 'forbidden', expectedRev: 0, type: 'character.patch', actorId: target.id, payload: { patch: { manual: { maxHp: 100 } } } }, f.ctx), /Democratic/);
 });
+test('AI world rulings update strict catalog and rules with current references while ownership and governance stay outside the packet', () => {
+  const f = fixture(), { target } = actors(f.state), exported = createAiExchange(f.state, 'turn_context', f.ctx), packet = reply(exported.packet, { decisionId: 'world-update', steps: [
+    { id: 'spawn-merchant', type: 'command', command: { type: 'actor.create', payload: { id: 'merchant', name: 'Merchant' } } },
+    { id: 'new-chapter', type: 'ruling', command: { type: 'world.configure', payload: { lore: '第二章', secretLore: '秘密路线', items: [{ id: 'map', name: 'Map', description: 'A map', bonuses: { wis: 1 } }], npcBehaviors: [{ actorId: 'merchant', kind: 'idle' }] } } },
+    { id: 'give-map', type: 'command', command: { type: 'inventory.add', actorId: target.id, payload: { contentId: 'world:map', quantity: 1 } } },
+  ] });
+  const preview = previewAiPacket(exported.state, packet, f.ctx); assert.equal(preview.valid, true, preview.errors.join('\n'));
+  const out = applyAiPacket(exported.state, packet, f.ctx); assert.equal(out.state.world!.lore, '第二章'); assert.equal(out.state.world!.secretLore, '秘密路线'); assert.equal(out.state.world!.ownerId, owner.id);
+  assert.equal(out.state.world!.npcBehaviors[0].actorId, out.state.actors.find(actor => actor.name === 'Merchant')!.id); assert.equal(out.state.actors[1].inventory[0].contentId, 'world:map');
+  for (const payload of [{ ownerId: player.id }, { mode: 'co-create' }, { rules: { ...f.state.world!.rules, grants: {} } }, { items: [{ id: 'x', name: 'X', description: '', ownerId: player.id }] }, { rules: { ...f.state.world!.rules, energy: { maximum: 10, perRound: 10, recoveryMode: 'round', recovery: 1, bypass: true } } }]) assert.equal(previewAiPacket(exported.state, reply(exported.packet, { decisionId: 'bad-config', steps: [{ id: 'rule', type: 'ruling', command: { type: 'world.configure', payload } }] }), f.ctx).valid, false);
+  const next = createAiExchange(out.state, 'turn_context', f.ctx), replay = reply(next.packet, { decisionId: 'world-update', narratives: [{ text: 'Reusing a decision ID in a new envelope' }] }); assert.equal(previewAiPacket(next.state, replay, f.ctx).valid, false);
+});
+test('AP worlds require hero intents and run explicit NPC commands through trusted intents with one AP/MP charge and the round cap', () => {
+  const f = planned('ai'); f.state.world!.rules.energy!.perRound = 3;
+  const exported = createAiExchange(f.state, 'turn_context', f.ctx), forbidden = reply(exported.packet, { decisionId: 'bypass', steps: [attackStep(f.attacker, f.target)] });
+  assert.equal(previewAiPacket(exported.state, forbidden, f.ctx).valid, false); assert.throws(() => applyAiPacket(exported.state, forbidden, f.ctx), /submitted intent/);
+  const npcAction = action({ range: 30, costs: [{ resourceId: 'ap', amount: 2 }, { resourceId: 'mp', amount: 2 }] });
+  const packet = reply(exported.packet, { decisionId: 'npc-turn', completeRound: false, steps: [
+    { id: 'new-npc', type: 'command', command: { type: 'actor.create', payload: { id: 'enemy', name: 'Explicit enemy', position: { x: 3, y: 0 }, resources: [{ id: 'mp', name: 'MP', current: 5, max: 5, recovery: 'manual' }], customActions: [npcAction] } } },
+    { id: 'npc-act', type: 'command', rollId: 'npc-dice', command: { type: 'action.use', actorId: 'enemy', targetIds: [f.target.id], payload: { actionId: npcAction.id } } },
+  ], aiRolls: [{ id: 'npc-dice', expression: '1d20+1d6', rolls: [10, 4], total: 14 }] });
+  const out = applyAiPacket(exported.state, packet, f.ctx), npc = out.state.actors.find(actor => actor.name === 'Explicit enemy')!;
+  assert.equal(npc.resources.find(resource => resource.id === 'ap')!.current, 8); assert.equal(npc.resources.find(resource => resource.id === 'mp')!.current, 3); assert.equal(out.state.world!.round.spent[npc.id], 2); assert.equal(out.state.actors[1].hp.current, 6);
+  assert.equal(out.state.world!.round.intents.at(-1)!.status, 'executed'); assert.deepEqual(applyAiPacket(out.state, packet, f.ctx).events, []);
+  const next = createAiExchange(out.state, 'turn_context', f.ctx), before = structuredClone(next.state), second = reply(next.packet, { decisionId: 'npc-over-budget', completeRound: false, steps: [{ ...attackStep(npc, f.target, 'too-many'), id: 'second-act' }], aiRolls: [{ id: 'too-many', expression: '1d20+1d6', rolls: [10, 4], total: 14 }] });
+  assert.throws(() => applyAiPacket(next.state, second, f.ctx), /支出额度不足/); assert.deepEqual(next.state, before);
+});

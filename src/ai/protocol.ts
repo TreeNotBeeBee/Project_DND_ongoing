@@ -2,13 +2,14 @@ import { z } from 'zod';
 import type { Actor, Command, Dice, GameState, Resolution } from '../shared/model';
 import type { AiExchange } from '../shared/world';
 import { assert, rollExpression, RuleError, uid } from '../engine/dice';
-import { configureWorld, executeIntent } from '../world/rounds';
+import { configureWorld, executeIntent, intentCost } from '../world/rounds';
+import { reconcileEnergy } from '../world/energy';
 import { executeEngine } from '../world/engine';
 import { grantItems } from '../world/inventory';
 import { grantExperience, reconcileWorldBonuses } from '../world/growth';
 import { getEntry } from '../content/index';
 import { validateTokenPosition } from '../engine/map';
-import { parseAiReply, actorInputSchema, AI_REPLY_JSON_SCHEMA, type AiContext, type AiPacket, type AiReply, type ExchangeKind } from './schema';
+import { parseAiReply, gameCommandPayloadSchemas, AI_REPLY_JSON_SCHEMA, type AiContext, type AiPacket, type AiReply, type ExchangeKind } from './schema';
 export * from './schema';
 
 type Log = Resolution['events'];
@@ -63,32 +64,17 @@ export function createAiExchange(input: GameState, kind: ExchangeKind, ctx: AiCo
   return { state, packet, schema: AI_REPLY_JSON_SCHEMA, prompt };
 }
 
-const bounded = z.number().finite().min(-1_000_000).max(1_000_000), text = z.string().max(4000), id = z.string().min(1).max(256);
-const abilities = z.strictObject({ str: bounded, dex: bounded, con: bounded, int: bounded, wis: bounded, cha: bounded }).partial();
-const resourceInput = z.strictObject({ id, name: z.string().max(100), current: bounded.min(0), max: bounded.min(0), recovery: z.enum(['short', 'long', 'turn', 'manual']) });
-const patchSchema = z.strictObject({ abilities: abilities.optional(), manual: z.strictObject({ maxHp: bounded.min(1), proficiency: bounded, ac: bounded, speed: bounded.min(0) }).partial().optional(), hp: z.strictObject({ current: bounded.min(0).optional(), temp: bounded.min(0).optional() }).optional(), resources: z.array(resourceInput).max(1000).optional(), customActions: z.array(z.record(z.string(), z.unknown())).max(1000).optional(), skills: z.array(id).max(1000).optional(), expertise: z.array(id).max(1000).optional(), saveProficiencies: z.array(z.enum(['str', 'dex', 'con', 'int', 'wis', 'cha'])).max(6).optional(), resistances: z.array(id).max(13).optional(), immunities: z.array(id).max(13).optional(), vulnerabilities: z.array(id).max(13).optional(), size: bounded.min(.25).max(4).optional() });
-const commandPayloads: Record<string, z.ZodType> = {
-  'actor.create': actorInputSchema,
-  'inventory.add': z.strictObject({ contentId: id, quantity: z.number().int().min(1).max(1_000_000).optional(), baseContentId: id.optional(), variant: z.string().max(100).optional() }),
-  'knowledge.unlock': z.strictObject({ entryId: id }),
-  'character.patch': z.strictObject({ patch: patchSchema }),
-  'growth.award': z.strictObject({ awards: z.array(z.strictObject({ trackId: id, amount: z.number().int().min(0).max(1_000_000_000) })).min(1).max(100) }),
-  'action.use': z.strictObject({ actionId: id, slotLevel: z.number().int().min(0).max(9).optional(), origin: z.strictObject({ x: bounded, y: bounded }).optional(), advantage: z.number().int().min(-1).max(1).optional(), options: z.record(z.string(), z.unknown()).optional() }),
-  'actor.move': z.strictObject({ path: z.array(z.strictObject({ x: bounded.int(), y: bounded.int() })).min(1).max(500) }),
-  'actor.rest': z.strictObject({ kind: z.enum(['short', 'long']), hitDice: z.record(z.string(), z.number().int().min(0).max(20)).optional() }),
-  'actor.deathSave': z.strictObject({}), 'inventory.equip': z.strictObject({ itemId: id, equipped: z.boolean(), attuned: z.boolean().optional() }),
-  'inventory.consume': z.strictObject({ itemId: id, options: z.record(z.string(), z.unknown()).optional() }),
-  'gm.adjust': z.strictObject({ hp: bounded.min(0).optional(), temp: bounded.min(0).optional(), resourceId: id.optional(), resourceDelta: bounded.optional(), condition: id.optional(), exhaustion: z.number().int().min(0).max(6).optional() }),
-  'effect.add': z.strictObject({ effect: z.strictObject({ name: text, condition: id, duration: bounded.min(0).optional() }) }),
-  'effect.remove': z.strictObject({ effectId: id }), 'choice.resolve': z.strictObject({ choiceId: id, optionId: id, ruling: text.optional() }),
-};
-function checkedCommand(state: GameState, command: Extract<Step, { type: 'command' | 'ruling' }>['command'], ruling = false, ctx?: AiContext): void {
+const commandPayloads: Record<string, z.ZodType> = gameCommandPayloadSchemas;
+const ordinaryCommands = new Set(['action.use', 'actor.move', 'inventory.equip', 'inventory.consume', 'actor.rest', 'actor.deathSave']);
+function checkedCommand(state: GameState, command: Extract<Step, { type: 'command' | 'ruling' }>['command'], ruling = false, ctx?: AiContext, fromIntent = false): void {
   assert(commandPayloads[command.type], 'AI_COMMAND', 'This command is not an AI game effect'); commandPayloads[command.type].parse(command.payload || {});
-  if (ruling) assert(['gm.adjust', 'effect.add', 'effect.remove', 'character.patch', 'growth.award'].includes(command.type), 'AI_RULING', 'An external ruling can only adjust character stats, experience, HP, resources or conditions');
-  if (command.actorId) { const actor = state.actors.find(actor => actor.id === command.actorId); assert(actor && !(actor.kind === 'hero' && actor.registration && actor.registration !== 'registered'), 'AI_ACTOR', 'Command refers to an unavailable actor'); }
-  else assert(['choice.resolve', 'actor.create'].includes(command.type), 'AI_ACTOR', 'A game effect requires actorId');
+  if (ruling) assert(['gm.adjust', 'effect.add', 'effect.remove', 'character.patch', 'growth.award', 'world.configure'].includes(command.type), 'AI_RULING', 'An external ruling can only adjust allowed world content, character stats, experience, HP, resources or conditions');
+  if (command.actorId) { const actor = state.actors.find(actor => actor.id === command.actorId); assert(actor && !(actor.kind === 'hero' && actor.registration && actor.registration !== 'registered'), 'AI_ACTOR', 'Command refers to an unavailable actor');
+    if (!fromIntent && state.world!.mode === 'ai' && state.world!.phase === 'running' && state.world!.rules.energy && actor.kind === 'hero' && ordinaryCommands.has(command.type)) assert(false, 'AI_INTENT_REQUIRED', 'With AP rules, ordinary hero actions must use a submitted intent; external stat rulings cannot replace an action');
+  }
+  else assert(['choice.resolve', 'actor.create', 'world.configure'].includes(command.type), 'AI_ACTOR', 'A game effect requires actorId');
   for (const target of command.targetIds || []) assert(state.actors.some(actor => actor.id === target), 'AI_TARGET', 'Command target does not exist');
-  const payload = command.payload || {};
+  const payload: Record<string, any> = command.payload || {};
   if (command.type === 'actor.create') assert(payload.kind !== 'hero', 'AI_NPC_ONLY', 'Runtime AI spawning cannot create player-character seats');
   if (command.type === 'inventory.add') assert(String(payload.contentId).startsWith('world:') ? state.world!.items.some(item => `world:${item.id}` === payload.contentId) : getEntry(String(payload.contentId)) && Number(payload.quantity || 1) <= 999, 'AI_ITEM', 'Only existing world items or published items in supported quantities can be awarded');
   if (command.type === 'knowledge.unlock') assert(getEntry(String(payload.entryId)) || state.world!.items.some(item => `world:${item.id}` === payload.entryId), 'AI_KNOWLEDGE', 'Knowledge unlock must refer to an existing entry');
@@ -124,8 +110,9 @@ function gameCommand(input: GameState, command: Command, ctx: AiContext, planned
     const choices = Object.fromEntries(Object.entries((p.choices || {}) as Record<string, unknown>).filter(([key]) => ['team', 'creatureType', 'characterBuild', 'magicInitiate', 'weaponMasteries', 'startingEquipment'].includes(key)));
     const result = executeEngine(state, { ...command, payload: { ...p, id: plannedId || uid(), ownerId: state.world!.ownerId, kind: 'monster', profile: p.profile || 'free', registration: 'registered', draft: false, choices, ...(p.profile !== 'srd2024' && !p.monsterId ? { manual: { maxHp: (p.hp as any)?.max || 10, ...(p.manual as any) } } : {}) } }, ctx);
     const previous = new Set(state.actors.map(actor => actor.id)); state = result.state; events.push(...result.events);
-    for (const created of state.actors.filter(actor => !previous.has(actor.id))) { created.ownerId = state.world!.ownerId; created.registration = 'registered'; delete created.requestedBy; }
-  } else if (command.type === 'inventory.add' && String(p.contentId).startsWith('world:')) grantItems(state, actor!, [{ itemId: String(p.contentId).slice(6), quantity: Number(p.quantity || 1) }], command.operationId);
+    for (const created of state.actors.filter(actor => !previous.has(actor.id))) { created.ownerId = state.world!.ownerId; created.registration = 'registered'; delete created.requestedBy; if (state.world!.phase === 'running') { reconcileEnergy(created, state.world!, true); state.world!.energyAt[created.id] = ctx.now; } }
+  } else if (command.type === 'world.configure') configureWorld(state, p, ctx);
+  else if (command.type === 'inventory.add' && String(p.contentId).startsWith('world:')) grantItems(state, actor!, [{ itemId: String(p.contentId).slice(6), quantity: Number(p.quantity || 1) }], command.operationId);
   else if (command.type === 'knowledge.unlock') actor!.knownEntries = [...new Set([...(actor!.knownEntries || []), String(p.entryId)])];
   else if (command.type === 'growth.award') { grantExperience(actor!, state.world!.rules, p.awards as { trackId: string; amount: number }[]); reconcileWorldBonuses(state); }
   else if (command.type === 'character.patch') {
@@ -137,6 +124,13 @@ function gameCommand(input: GameState, command: Command, ctx: AiContext, planned
     Object.assign(actor!, patch); actor!.hp.max = actor!.manual!.maxHp; actor!.hp.current = Math.min(actor!.hp.current, actor!.hp.max);
     const problems = ctx.engine.validateActor(actor!); assert(!problems.length, 'AI_CHARACTER', problems.join('; '));
     validateTokenPosition(state.scene, actor!, actor!.position, state.actors.filter(other => other.registration === undefined || other.registration === 'registered'));
+  } else if (state.world!.mode === 'ai' && state.world!.phase === 'running' && state.world!.rules.energy && actor && actor.kind !== 'hero' && ordinaryCommands.has(command.type)) {
+    assert(['planning', 'settling'].includes(state.world!.round.phase), 'AI_PHASE', 'Ordinary NPC actions require an open world round');
+    const type = command.type === 'actor.move' ? 'move' : 'action', intentId = `ai-npc:${command.operationId}`;
+    assert(!state.world!.round.intents.some(intent => intent.id === intentId), 'AI_INTENT', 'This NPC action was already executed');
+    const payload = command.type === 'inventory.equip' ? { ...p, commandType: 'inventory.equip' } : p;
+    state.world!.round.intents.push({ id: intentId, actorId: actor.id, memberId: actor.ownerId, type, payload, targetIds: command.targetIds || [], cost: intentCost(state, actor, type, payload), round: state.world!.round.number, status: 'approved' });
+    return executeIntent(state, intentId, { ...ctx, resolveEngine: (working, engineCommand, dice) => ctx.resolveEngine(working, { ...command, operationId: engineCommand.operationId, expectedRev: working.rev }, dice) });
   } else return executeEngine(state, command, ctx);
   note(events, 'ai-external-ruling', `Owner confirmed external ${command.type}`, command.actorId); return { state, events };
 }
@@ -154,6 +148,7 @@ function mappedCommand(command: Extract<Step, { type: 'command' | 'ruling' }>['c
   const options = mapped.payload?.options as Record<string, any> | undefined;
   if (options?.projectileTargets) options.projectileTargets = options.projectileTargets.map(map);
   if (options?.allocations) options.allocations = Object.fromEntries(Object.entries(options.allocations).map(([id, amount]) => [map(id), amount]));
+  if (mapped.type === 'world.configure' && Array.isArray(mapped.payload?.npcBehaviors)) mapped.payload.npcBehaviors = mapped.payload.npcBehaviors.map((behavior: any) => ({ ...behavior, actorId: map(behavior.actorId) }));
   return mapped;
 }
 function packetInput(value: unknown): AiReply { return parseAiReply(typeof value === 'string' ? JSON.parse(value) : value); }
@@ -161,6 +156,7 @@ function inspect(input: GameState, packet: AiReply, ctx: AiContext): Receipt | u
   access(input, ctx); assert(packet.campaignId === input.id, 'AI_CAMPAIGN', 'Packet belongs to a different campaign');
   assert(!['__proto__', 'constructor', 'prototype'].includes(packet.payload.decisionId), 'AI_DECISION', 'Invalid decision ID');
   const exchange = exchangeBy(input, packet.exchangeId), receipt = own(exchange.payload._decisions, packet.payload.decisionId) as Receipt | undefined;
+  assert(!input.world!.ai.exchanges.some(entry => entry.id !== packet.exchangeId && own(entry.payload._decisions, packet.payload.decisionId)), 'AI_DECISION_CONFLICT', 'This decisionId already belongs to another exchange; never replay a reward under a new envelope');
   assert(packet.worldRevision === exchange.worldRevision, 'AI_REVISION', 'Reply must echo the exported gameplay revision');
   if (receipt) { assert(receipt.canonical === canonical(packet), 'AI_DECISION_CONFLICT', 'This decisionId was already used with different content'); return receipt; }
   assert(packet.worldRevision === input.world!.gameplayRev, 'AI_STALE', 'Gameplay changed; export a fresh context before importing');
@@ -180,14 +176,14 @@ function inspect(input: GameState, packet: AiReply, ctx: AiContext): Receipt | u
         const alias = String(step.command.payload?.id || step.id); assert(!prospective.actors.some(actor => actor.id === alias), 'AI_EXTERNAL_ID', 'Spawn aliases must be unique and cannot shadow an existing actor');
         const before = new Set(prospective.actors.map(actor => actor.id)); prospective = gameCommand(prospective, { ...step.command, operationId: 'preview:' + step.id, expectedRev: input.rev } as Command, { ...ctx, dice: () => { throw new RuleError('AI_PREVIEW_DICE', 'Character prevalidation cannot consume dice'); } }, alias).state;
         const created = prospective.actors.find(actor => !before.has(actor.id))!; created.id = alias;
-      } else if (['character.patch', 'growth.award', 'knowledge.unlock'].includes(step.command.type) || step.command.type === 'inventory.add' && String(step.command.payload?.contentId).startsWith('world:')) prospective = gameCommand(prospective, { ...step.command, operationId: 'preview:' + step.id, expectedRev: input.rev } as Command, ctx).state;
+      } else if (['character.patch', 'growth.award', 'knowledge.unlock', 'world.configure'].includes(step.command.type) || step.command.type === 'inventory.add' && String((step.command.payload as any)?.contentId).startsWith('world:')) prospective = gameCommand(prospective, { ...step.command, operationId: 'preview:' + step.id, expectedRev: input.rev } as Command, ctx).state;
     }
     if (step.type === 'intent') {
       assert(ctx.resolveWorldCommand, 'AI_WORLD_HOOK', 'World intent resolver is unavailable');
       const intent = input.world!.round.intents.find(intent => intent.id === step.intentId); assert(intent && ['planned', 'approved'].includes(intent.status) && !reviewed.has(intent.id), 'AI_INTENT', 'Intent is missing, already resolved, or decided twice');
       assert(input.world!.round.ended.includes(intent.memberId), 'AI_TURN_OPEN', 'AI cannot execute an intent before its owner ends the turn');
       assert(step.approve || !step.rollId, 'AI_DICE_USAGE', 'Rejected intents cannot consume dice'); reviewed.add(intent.id);
-      if (step.approve && intent.type === 'action') checkedCommand(input, { type: intent.payload.commandType === 'inventory.equip' ? 'inventory.equip' : 'action.use', actorId: intent.actorId, targetIds: intent.targetIds, payload: Object.fromEntries(Object.entries(intent.payload).filter(([key]) => key !== 'commandType')) }, false, ctx);
+      if (step.approve && intent.type === 'action') checkedCommand(input, { type: intent.payload.commandType === 'inventory.equip' ? 'inventory.equip' : 'action.use', actorId: intent.actorId, targetIds: intent.targetIds, payload: Object.fromEntries(Object.entries(intent.payload).filter(([key]) => key !== 'commandType')) } as any, false, ctx, true);
     }
     if (step.type === 'roll') rollExpression(step.expression, () => 1);
     if ('rollId' in step && step.rollId && input.world!.ai.diceSource === 'ai') { assert(!used.has(step.rollId) && pools.some(roll => roll.id === step.rollId), 'AI_DICE_ID', 'Every AI roll reference must exist and have one purpose'); used.add(step.rollId); }
@@ -196,7 +192,10 @@ function inspect(input: GameState, packet: AiReply, ctx: AiContext): Receipt | u
   if (input.world!.ai.diceSource === 'ai') assert(pools.every(roll => used.has(roll.id)), 'AI_DICE_UNUSED', 'AI supplied dice without an assigned step');
   if (input.world!.ai.diceSource === 'program') { const firstRoll = steps.findIndex(step => step.type === 'roll'); assert(firstRoll < 0 || steps.slice(firstRoll).every(step => step.type === 'roll'), 'AI_ROLL_BARRIER', 'After requesting program dice, wait for roll_results before choosing subsequent game effects'); }
   for (const narrative of packet.payload.narratives || []) for (const actorId of narrative.actorIds || []) assert(prospective.actors.some(actor => actor.id === actorId), 'AI_NARRATIVE', 'Narrative actor does not exist');
-  if (packet.payload.completeRound) { endedParticipants(input, ctx); assert(!steps.some(step => step.type === 'roll'), 'AI_ROLL_BARRIER', 'A roll request cannot also finish the round'); }
+  if (packet.payload.completeRound) {
+    endedParticipants(input, ctx); assert(!steps.some(step => step.type === 'roll'), 'AI_ROLL_BARRIER', 'A roll request cannot also finish the round');
+    assert(input.world!.round.intents.every(intent => !input.world!.round.ended.includes(intent.memberId) || !['planned', 'approved'].includes(intent.status) || reviewed.has(intent.id)), 'AI_INTENT_PENDING', 'Every ended participant intent needs an explicit decision before completing this round');
+  }
   if (input.choices.length) assert(steps.length === 1 && steps[0].type === 'command' && steps[0].command.type === 'choice.resolve', 'AI_REACTION_BARRIER', 'Resolve the current reaction before another AI batch');
 }
 
@@ -293,12 +292,13 @@ export function previewAiPacket(state: GameState, value: unknown, ctx: AiContext
     const summary = receipt?.status === 'applied' ? ['此决定已执行，再次导入不会重复执行。'] : packet.packetType === 'initialize' ? [`初始化世界：${(packet.payload.characters || []).length}张待领取角色卡、${(packet.payload.npcs || []).length + (packet.payload.monsters || []).length}名NPC。`, ...(packet.payload.characters || []).map(actor => `待领取角色：${actor.name}；${actor.profile || 'free'}；生命上限${actor.manual?.maxHp || actor.hp?.max || 10}；默认归房主保管并隐藏。`)] : (packet.payload.steps || []).map(step => {
       if (step.type === 'intent') { const intent = state.world!.round.intents.find(intent => intent.id === step.intentId); return `${step.approve ? '批准并立即结算' : '拒绝'}意图${step.intentId}：${label(intent?.actorId)}，行动力${intent?.cost ?? '?'}${step.rollId ? `，骰池${step.rollId}` : ''}。`; }
       if (step.type === 'roll') return `请求骰子${step.rollId}：${step.expression}。`;
-      const p = step.command.payload || {}, who = label(step.command.actorId);
+      const p: Record<string, any> = step.command.payload || {}, who = label(step.command.actorId);
       if (step.command.type === 'actor.create') return `创建NPC ${p.name}；${p.profile || 'free'}；归房主管理。`;
       if (step.command.type === 'character.patch') return `外部属性裁定：${who}，${JSON.stringify(p.patch)}。`;
       if (step.command.type === 'growth.award') return `授予成长经验：${who}，${JSON.stringify(p.awards)}。`;
       if (step.command.type === 'inventory.add') return `发放物品：${who}，${p.contentId} × ${p.quantity || 1}。`;
       if (step.command.type === 'knowledge.unlock') return `个人解锁：${who}，${p.entryId}。`;
+      if (step.command.type === 'world.configure') return `外部世界裁定：${JSON.stringify(p)}。`;
       return `${step.type === 'ruling' ? '外部裁定' : '游戏效果'}：${who} → ${step.command.type} ${JSON.stringify(p)}${'rollId' in step && step.rollId ? `，骰池${step.rollId}` : ''}。`;
     });
     summary.push(`骰源：${state.world!.ai.diceSource === 'ai' ? 'AI逐骰验证' : '程序随机'}；外部裁定须房主确认，私人笔记及成员权限不由AI修改。`);

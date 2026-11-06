@@ -47,14 +47,43 @@ export const sceneSchema = z.strictObject({
   walls: z.array(z.strictObject({ id, a: position, b: position, door: z.boolean().optional(), open: z.boolean().optional() })).max(1000),
   terrain: z.array(z.strictObject({ id, x: nonnegative.int(), y: nonnegative.int(), width: number.positive().int(), height: number.positive().int(), type: z.enum(['difficult', 'half-cover', 'three-quarter-cover']) })).max(1000),
 });
-// Rules are validated by the authoritative world reducer before initialization commits.
-const initializePayload = z.strictObject({
-  decisionId: id, lore: text.optional(), secretLore: text.optional(), scene: sceneSchema.optional(), rules: arbitrary.optional(),
-  characters: z.array(actorInputSchema).max(500).optional(), npcs: z.array(actorInputSchema).max(500).optional(), monsters: z.array(actorInputSchema).max(500).optional(),
-  items: z.array(arbitrary).max(2000).optional(), nodes: z.array(arbitrary).max(1000).optional(), npcBehaviors: z.array(arbitrary).max(500).optional(),
+const amountSchema = z.strictObject({ itemId: id, quantity: z.number().int().min(1).max(1_000_000) });
+const growthTarget = z.enum(['str', 'dex', 'con', 'int', 'wis', 'cha', 'hp', 'mp', 'stamina', 'ap.maximum', 'ap.recovery', 'ap.perRound']);
+const trackSchema = z.strictObject({ id, name: z.string().min(1).max(128), curve: z.array(z.number().int().min(1).max(1_000_000_000)).min(1).max(1000), pointsPerLevel: z.number().int().min(0).max(1_000_000), upgrades: z.array(z.strictObject({ target: growthTarget, cost: z.number().int().min(1).max(1_000_000), amount: z.number().finite().positive().max(1_000_000_000), max: z.number().finite().nonnegative().max(1_000_000_000).optional() })).max(100) });
+const awardsSchema = z.array(z.strictObject({ trackId: id, amount: z.number().int().min(0).max(1_000_000_000) })).max(100);
+export const worldRulesSchema = z.strictObject({
+  energy: z.strictObject({ maximum: z.number().min(0).max(100), initial: z.number().min(0).max(100).optional(), perRound: z.number().finite().min(0).max(1_000_000_000), recoveryMode: z.enum(['hour', 'round']), recovery: z.number().finite().min(0).max(1_000_000_000) }).optional(),
+  costs: z.strictObject({ move: nonnegative.optional(), action: nonnegative.optional(), narrative: nonnegative.optional(), proposal: nonnegative.optional() }), proposalHours: z.number().positive().max(8760).optional(),
+  conflict: z.strictObject({ kind: z.enum(['random', 'cancel-refund', 'attribute']), attribute: z.string().min(1).max(128).optional() }),
+  growth: z.strictObject({ kind: z.enum(['global', 'tracks']), tracks: z.array(trackSchema).max(100) }),
+  recipes: z.array(z.strictObject({ id, name: z.string().min(1).max(128), description: z.string().max(10_000), cost: nonnegative, inputs: z.array(amountSchema).max(100), outputs: z.array(amountSchema).max(100), resourceCosts: z.array(z.strictObject({ resourceId: id, amount: nonnegative })).max(100).optional(), experience: awardsSchema, durationRounds: z.number().int().min(1).max(1_000_000).optional(), unlockEntries: z.array(id).max(100).optional() })).max(1000),
 });
-export const effectCommands = ['action.use', 'actor.move', 'actor.rest', 'actor.deathSave', 'actor.create', 'inventory.add', 'inventory.equip', 'inventory.consume', 'knowledge.unlock', 'character.patch', 'growth.award', 'gm.adjust', 'effect.add', 'effect.remove', 'choice.resolve'] as const;
-const commandSchema = z.strictObject({ type: z.enum(effectCommands), actorId: id.optional(), payload: arbitrary.optional(), targetIds: z.array(id).max(500).optional() });
+const worldItemsSchema = z.array(z.strictObject({ id, name: z.string().min(1).max(128), description: z.string().max(10_000), bonuses: z.partialRecord(growthTarget, z.number().finite().min(-1_000_000_000).max(1_000_000_000)).optional() })).max(2000);
+const worldNodesSchema = z.array(z.strictObject({ id, name: z.string().min(1).max(128), position, inventory: z.array(amountSchema.extend({ quantity: z.number().int().min(0).max(1_000_000) })).max(1000), hidden: z.boolean().optional() })).max(1000);
+const npcBehaviorsSchema = z.array(z.strictObject({ actorId: id, kind: z.enum(['idle', 'patrol', 'hostile', 'trade', 'event']), waypoints: z.array(position).max(1000).optional(), targetKinds: z.array(z.enum(['hero', 'companion', 'monster'])).max(3).optional(), actionId: id.optional(), ruleId: id.optional(), trigger: z.string().max(4000).optional() })).max(500);
+export const worldConfigurationSchema = z.strictObject({ lore: text.optional(), secretLore: text.optional(), rules: worldRulesSchema.optional(), items: worldItemsSchema.optional(), nodes: worldNodesSchema.optional(), npcBehaviors: npcBehaviorsSchema.optional() });
+// Catalog references and adopted-rule constraints are also checked by the authoritative world reducer.
+const initializePayload = z.strictObject({
+  decisionId: id, lore: text.optional(), secretLore: text.optional(), scene: sceneSchema.optional(), rules: worldRulesSchema.optional(),
+  characters: z.array(actorInputSchema).max(500).optional(), npcs: z.array(actorInputSchema).max(500).optional(), monsters: z.array(actorInputSchema).max(500).optional(),
+  items: worldItemsSchema.optional(), nodes: worldNodesSchema.optional(), npcBehaviors: npcBehaviorsSchema.optional(),
+});
+export const effectCommands = ['action.use', 'actor.move', 'actor.rest', 'actor.deathSave', 'actor.create', 'inventory.add', 'inventory.equip', 'inventory.consume', 'knowledge.unlock', 'character.patch', 'growth.award', 'world.configure', 'gm.adjust', 'effect.add', 'effect.remove', 'choice.resolve'] as const;
+const resourceInput = z.strictObject({ id, name: z.string().max(100), current: nonnegative, max: nonnegative, recovery: z.enum(['short', 'long', 'turn', 'manual']) });
+const patchSchema = z.strictObject({ abilities: z.strictObject({ str: number, dex: number, con: number, int: number, wis: number, cha: number }).partial().optional(), manual: z.strictObject({ maxHp: number.min(1), proficiency: number, ac: number, speed: nonnegative }).partial().optional(), hp: z.strictObject({ current: nonnegative.optional(), temp: nonnegative.optional() }).optional(), resources: z.array(resourceInput).max(1000).optional(), customActions: z.array(arbitrary).max(1000).optional(), skills: z.array(id).max(1000).optional(), expertise: z.array(id).max(1000).optional(), saveProficiencies: z.array(ability).max(6).optional(), resistances: z.array(id).max(13).optional(), immunities: z.array(id).max(13).optional(), vulnerabilities: z.array(id).max(13).optional(), size: number.min(.25).max(4).optional() });
+export const gameCommandPayloadSchemas = {
+  'actor.create': actorInputSchema, 'world.configure': worldConfigurationSchema,
+  'inventory.add': z.strictObject({ contentId: id, quantity: z.number().int().min(1).max(1_000_000).optional(), baseContentId: id.optional(), variant: z.string().max(100).optional() }),
+  'knowledge.unlock': z.strictObject({ entryId: id }), 'character.patch': z.strictObject({ patch: patchSchema }), 'growth.award': z.strictObject({ awards: awardsSchema.min(1) }),
+  'action.use': z.strictObject({ actionId: id, slotLevel: z.number().int().min(0).max(9).optional(), origin: z.strictObject({ x: number, y: number }).optional(), advantage: z.number().int().min(-1).max(1).optional(), options: arbitrary.optional() }),
+  'actor.move': z.strictObject({ path: z.array(z.strictObject({ x: number.int(), y: number.int() })).min(1).max(500) }),
+  'actor.rest': z.strictObject({ kind: z.enum(['short', 'long']), hitDice: z.record(z.string(), z.number().int().min(0).max(20)).optional() }),
+  'actor.deathSave': z.strictObject({}), 'inventory.equip': z.strictObject({ itemId: id, equipped: z.boolean(), attuned: z.boolean().optional() }), 'inventory.consume': z.strictObject({ itemId: id, options: arbitrary.optional() }),
+  'gm.adjust': z.strictObject({ hp: nonnegative.optional(), temp: nonnegative.optional(), resourceId: id.optional(), resourceDelta: number.optional(), condition: id.optional(), exhaustion: z.number().int().min(0).max(6).optional() }),
+  'effect.add': z.strictObject({ effect: z.strictObject({ name: z.string().max(4000), condition: id, duration: nonnegative.optional() }) }), 'effect.remove': z.strictObject({ effectId: id }), 'choice.resolve': z.strictObject({ choiceId: id, optionId: id, ruling: z.string().max(4000).optional() }),
+};
+function effectCommand<T extends typeof effectCommands[number]>(type: T) { return z.strictObject({ type: z.literal(type), actorId: id.optional(), payload: gameCommandPayloadSchemas[type].optional(), targetIds: z.array(id).max(500).optional() }); }
+const commandSchema = z.discriminatedUnion('type', [effectCommand('action.use'), effectCommand('actor.move'), effectCommand('actor.rest'), effectCommand('actor.deathSave'), effectCommand('actor.create'), effectCommand('inventory.add'), effectCommand('inventory.equip'), effectCommand('inventory.consume'), effectCommand('knowledge.unlock'), effectCommand('character.patch'), effectCommand('growth.award'), effectCommand('world.configure'), effectCommand('gm.adjust'), effectCommand('effect.add'), effectCommand('effect.remove'), effectCommand('choice.resolve')]);
 const stepSchema = z.discriminatedUnion('type', [
   z.strictObject({ id, type: z.literal('command'), command: commandSchema, rollId: id.optional() }),
   z.strictObject({ id, type: z.literal('intent'), intentId: id, approve: z.boolean(), rollId: id.optional() }),
