@@ -57,8 +57,8 @@ export function recoverHourly(state: GameState, now: number): void {
 export function recoverRound(state: GameState, onlineMemberIds: readonly string[]): void {
   const world = state.world;
   if (!world || world.rules.energy?.recoveryMode !== 'round') return;
-  const online = new Set(onlineMemberIds);
-  for (const actor of state.actors.filter(actor => isActiveActor(actor) && online.has(actor.ownerId))) {
+  const online = new Set(onlineMemberIds), automatic = new Set(world.npcBehaviors.map(behavior => behavior.actorId));
+  for (const actor of state.actors.filter(actor => isActiveActor(actor) && (online.has(actor.ownerId) || actor.kind !== 'hero' && automatic.has(actor.id)))) {
     const resource = apResource(actor);
     if (resource) resource.current = decimal(Math.min(micro(resource.max), micro(resource.current) + micro(energyLimits(actor, world).recovery)));
   }

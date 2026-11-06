@@ -7,9 +7,10 @@ import { decimal, finite, micro } from './fixed';
 import { apResource, energyLimits, isActiveActor, reconcileEnergy, recoverRound, spendEnergy } from './energy';
 import { migrateGrowth, reconcileWorldBonuses } from './growth';
 import { executeEngine } from './engine';
-import { equipWorldItem, finishJobs, gatherAmounts, itemQuantity, performGather, performRecipe } from './inventory';
+import { equipWorldItem, finishJobs, gatherAmounts, grantItems, itemQuantity, performGather, performRecipe, removeItems } from './inventory';
 import { hasCapability, note, openProposal, registeredMembers, requireCapability, requireOwner, requireWorld } from './governance';
 import { draftPayload, id, object, text, validateBehaviors, validateItems, validateNodes, validateRules } from './validation';
+import { runNpcPolicies } from './npc';
 
 type Log = Resolution['events'];
 const pending = (intent: PlannedIntent) => intent.status === 'planned' || intent.status === 'approved';
@@ -80,13 +81,31 @@ export function resourceClaims(state: GameState, intent: PlannedIntent): Claim[]
   return claims;
 }
 function reserve(state: GameState, candidate: PlannedIntent): void {
-  const world = requireWorld(state), actor = findActor(state, candidate.actorId), intents = [...world.round.intents.filter(intent => intent.id !== candidate.id && intent.actorId === actor.id && pending(intent)), candidate];
+  const world = requireWorld(state), actor = findActor(state, candidate.actorId), intents = world.round.intents.filter(intent => intent.actorId === actor.id && pending(intent));
+  const previous = intents.findIndex(intent => intent.id === candidate.id); if (previous >= 0) intents[previous] = candidate; else intents.push(candidate);
   const reserved = intents.reduce((sum, intent) => sum + micro(intent.cost), 0), resource = apResource(actor), spent = micro(world.round.spent[actor.id] || 0);
   assert(reserved <= micro(resource?.current || 0), 'WORLD_AP_RESERVED', '本轮计划保留的行动力超过可用余额');
   if (world.rules.energy) assert(reserved + spent <= micro(energyLimits(actor, world).perRound), 'WORLD_ROUND_LIMIT', '本轮计划超过每回合行动力支出额度');
-  const resources = new Map<string, Claim>();
-  for (const intent of intents) for (const claim of resourceClaims(state, intent)) if (!claim.key.startsWith('node:')) { const before = resources.get(claim.key); resources.set(claim.key, { ...claim, quantity: (before?.quantity || 0) + claim.quantity }); }
-  for (const claim of resources.values()) assert(claim.quantity <= claim.available, 'WORLD_RESOURCE_RESERVED', '本轮计划重复保留了不足的法力、体力或材料');
+  const forecast = structuredClone(state), future = findActor(forecast, actor.id);
+  for (const intent of intents) {
+    for (const claim of resourceClaims(forecast, intent)) assert(claim.quantity <= claim.available, 'WORLD_RESOURCE_RESERVED', '本轮计划重复保留了不足的法力、体力、材料或节点资源');
+    if (intent.type === 'move') future.position = structuredClone((intent.payload.path as Actor['position'][]).at(-1)!);
+    if (intent.type === 'gather') { const amounts = gatherAmounts(forecast, intent.payload), node = requireWorld(forecast).nodes.find(node => node.id === intent.payload.nodeId)!; for (const amount of amounts) node.inventory.find(entry => entry.itemId === amount.itemId)!.quantity -= amount.quantity; grantItems(forecast, future, amounts, `forecast:${intent.id}`); }
+    if (intent.type === 'recipe') { const recipe = world.rules.recipes.find(recipe => recipe.id === intent.payload.ruleId)!; removeItems(future, recipe.inputs); if (!recipe.durationRounds) grantItems(forecast, future, recipe.outputs, `forecast:${intent.id}`); }
+    for (const claim of resourceClaims(state, intent)) if (claim.key.startsWith(`actor:${actor.id}:resource:`)) { const resource = future.resources.find(resource => claim.key === `actor:${actor.id}:resource:${resource.id}`)!; resource.current -= claim.quantity; }
+  }
+}
+function npcPayload(actor: Record<string, any>, ownerId: string, actorId: string): Record<string, any> {
+  assert(actor.kind === undefined || ['monster', 'companion'].includes(actor.kind), 'WORLD_NPC', '世界提案只能创建NPC、怪物或随从，不能生成主角席位');
+  const npc: Record<string, any> = { ...actor, id: actorId, ownerId, kind: actor.kind || 'monster', profile: actor.profile || 'free', draft: false, choices: typeof actor.choices?.team === 'string' ? { team: actor.choices.team } : {} };
+  for (const key of ['registration', 'requestedBy', 'publicGroups', 'knownEntries', 'growth', 'world', 'mode', 'owner', 'governance', 'grants']) delete npc[key];
+  return npc;
+}
+function validateSubmission(state: GameState, draft: WorldDraft, ctx: WorldContext): WorldDraft {
+  const published = { ...structuredClone(draft), payload: draftPayload(draft.kind, draft.payload) }, world = requireWorld(state), candidate = structuredClone(state);
+  if (draft.kind === 'actor' || draft.kind === 'scene') executeEngine(candidate, { operationId: `preview:${draft.id}`, expectedRev: state.rev, type: draft.kind === 'actor' ? 'actor.create' : 'scene.update', payload: draft.kind === 'actor' ? npcPayload(object(published.payload.actor), world.ownerId, `preview:${draft.id}`) : published.payload }, ctx);
+  else if (draft.kind !== 'story') configureWorld(candidate, published.payload, ctx);
+  return published;
 }
 export function saveIntent(state: GameState, command: Command, member: Member, ctx: WorldContext, forced?: Record<string, any>): void {
   const world = requireWorld(state); assert(world.phase === 'running' && world.round.phase === 'planning', 'WORLD_PHASE', '当前不在回合计划阶段');
@@ -106,7 +125,7 @@ export function saveIntent(state: GameState, command: Command, member: Member, c
     assert(world.mode === 'co-create' || member.id === world.ownerId, 'WORLD_PERMISSION', '此模式由主持人负责世界内容');
     const draft = world.drafts.find(draft => draft.id === payload.draftId && draft.ownerId === member.id); assert(draft, 'WORLD_DRAFT_OWNER', '请选择自己的现有草稿');
     assert(!world.round.intents.some(intent => intent.id !== existing?.id && intent.type === 'proposal' && pending(intent) && intent.payload.draftId === draft.id), 'WORLD_DUPLICATE', '此草稿已保留本轮提案费用');
-    payload.draft = { ...structuredClone(draft), payload: draftPayload(draft.kind, draft.payload) };
+    payload.draft = validateSubmission(state, draft, ctx);
   }
   const originalIntents = world.round.intents;
   if (existing) world.round.intents = originalIntents.slice(0, originalIntents.indexOf(existing));
@@ -140,20 +159,24 @@ function conflictOrder(state: GameState, wave: PlannedIntent[], ctx: WorldContex
   const world = requireWorld(state), claims = new Map<string, { total: number; available: number; ids: string[] }>();
   for (const intent of wave) try { for (const claim of resourceClaims(state, intent)) { const previous = claims.get(claim.key); claims.set(claim.key, { total: (previous?.total || 0) + claim.quantity, available: claim.available, ids: [...(previous?.ids || []), intent.id] }); } } catch (error) { fail(state, intent.id, error, log); }
   const contested = new Set([...claims.values()].filter(claim => claim.total > claim.available && claim.ids.length > 1).flatMap(claim => claim.ids));
-  if (world.rules.conflict.kind === 'cancel-refund') { for (const intentId of contested) fail(state, intentId, '资源竞争：本轮争抢者全部取消并释放保留额度', log); return wave.filter(intent => !contested.has(intent.id) && intent.status === 'approved'); }
-  const chosen = wave.filter(intent => contested.has(intent.id) && intent.status === 'approved');
-  if (world.rules.conflict.kind === 'random') for (let index = chosen.length - 1; index > 0; index--) { const roll = ctx.dice(index + 1); assert(Number.isInteger(roll) && roll >= 1 && roll <= index + 1, 'WORLD_DICE', '随机冲突结果超出骰面'); [chosen[index], chosen[roll - 1]] = [chosen[roll - 1], chosen[index]]; }
-  else {
+  if (world.rules.conflict.kind === 'cancel-refund') for (const intentId of contested) fail(state, intentId, '资源竞争：本轮争抢者全部取消并释放保留额度', log);
+  const eligible = wave.filter(intent => requireWorld(state).round.intents.find(entry => entry.id === intent.id)?.status === 'approved'), rolls: {expression:string;rolls:number[];total:number}[] = [];
+  for (let index = eligible.length - 1; index > 0; index--) { const roll = ctx.dice(index + 1); assert(Number.isInteger(roll) && roll >= 1 && roll <= index + 1, 'WORLD_DICE', '随机顺序超出骰面'); rolls.push({ expression: `1d${index + 1}`, rolls: [roll], total: roll }); [eligible[index], eligible[roll - 1]] = [eligible[roll - 1], eligible[index]]; }
+  const chosen = eligible.filter(intent => contested.has(intent.id));
+  if (world.rules.conflict.kind === 'attribute') {
     const key = world.rules.conflict.attribute!, score = (intent: PlannedIntent) => { const actor = findActor(state, intent.actorId); return key === 'level' ? Math.max(1, ...Object.values(actor.growth?.tracks || {}).map(track => track.level)) : key in actor.abilities ? actor.abilities[key as keyof Actor['abilities']] : Number(actor.choices?.[key] ?? 0); };
-    chosen.sort((a, b) => finite(score(b), '冲突属性', true) - finite(score(a), '冲突属性', true) || a.id.localeCompare(b.id));
+    chosen.sort((a, b) => finite(score(b), '冲突属性', true) - finite(score(a), '冲突属性', true));
   }
-  const untouched = wave.filter(intent => !contested.has(intent.id) && intent.status === 'approved'); return [...untouched, ...chosen];
+  const untouched = eligible.filter(intent => !contested.has(intent.id)), order = [...untouched, ...chosen];
+  if (order.length > 1) log.push({ type: 'world-action-order', message: `同批次行动顺序：${order.map(intent => findActor(state, intent.actorId).name).join(' → ')}；同属性竞争按已记录随机结果打破平手`, rolls });
+  return order;
 }
 export function settleRound(input: GameState, member: Member, ctx: WorldContext): Resolution {
   let state = structuredClone(input); const world = requireWorld(state); requireCapability(world, member, 'manage.rounds');
   assert(world.phase === 'running' && ['planning', 'settling'].includes(world.round.phase), 'WORLD_PHASE', '此回合已经结算');
   assert(!state.choices.length, 'WORLD_REACTION', '请先完成待决规则反应，再继续统一结算');
   if (world.round.phase === 'planning') assert(world.round.participants.every(memberId => !ctx.onlineMemberIds.includes(memberId) || world.round.ended.includes(memberId)), 'WORLD_TURN_OPEN', '仍有在线参与者尚未确认结束回合');
+  if (world.mode !== 'co-create') assert(!world.round.intents.some(intent => intent.status === 'planned' && world.round.ended.includes(intent.memberId)), 'WORLD_REVIEW', '仍有已确认的意图等待真人主持人或AI审批');
   world.round.phase = 'settling'; const events: Log = [], eligible = new Set(world.round.ended);
   for (const intent of world.round.intents) if (pending(intent) && !eligible.has(intent.memberId)) { intent.status = 'planned'; intent.result = '离线且未确认结束，本轮保留为未扣费草稿'; }
   while (true) {
@@ -167,6 +190,8 @@ export function settleRound(input: GameState, member: Member, ctx: WorldContext)
       if (state.choices.length) { note(events, 'world-round-paused', '统一结算等待规则选择；处理后继续结算，不会再次扣费'); return { state, events }; }
     }
   }
+  const npc = runNpcPolicies(state, ctx, { cost: intentCost, execute: executeIntent }); state = npc.state; events.push(...npc.events);
+  if (state.choices.length) { note(events, 'world-round-paused', 'NPC行动等待规则选择，处理后继续结算'); return { state, events }; }
   requireWorld(state).round.phase = 'intermission'; note(events, 'world-round-settled', `第${requireWorld(state).round.number}回合已结算`); return { state, events };
 }
 export function applyApprovedProposals(input: GameState, round: number, ctx: WorldContext): Resolution {
@@ -179,9 +204,7 @@ export function applyApprovedProposals(input: GameState, round: number, ctx: Wor
         const actor = proposal.kind === 'actor' ? object(payload.actor) : undefined;
         let npc: Record<string, any> | undefined;
         if (actor) {
-          assert(actor.kind === undefined || ['monster', 'companion'].includes(actor.kind), 'WORLD_NPC', '世界提案只能创建NPC、怪物或随从，不能生成主角席位');
-          npc = { ...actor, id: `npc:${proposal.id}`, ownerId: world.ownerId, kind: actor.kind || 'monster', profile: actor.profile || 'free', draft: false, choices: typeof actor.choices?.team === 'string' ? { team: actor.choices.team } : {} };
-          for (const key of ['registration', 'requestedBy', 'publicGroups', 'knownEntries', 'growth', 'world', 'mode', 'owner', 'governance', 'grants']) delete npc[key];
+          npc = npcPayload(actor, world.ownerId, `npc:${proposal.id}`);
         }
         const command: Command = { operationId: `adopt:${proposal.id}`, expectedRev: state.rev, type: proposal.kind === 'scene' ? 'scene.update' : 'actor.create', payload: npc || payload };
         const result = executeEngine(candidate, command, ctx); state = result.state; events.push(...result.events);

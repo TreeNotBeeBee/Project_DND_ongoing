@@ -33,7 +33,7 @@ export function equipWorldItem(state: GameState, actor: Actor, payload: Record<s
 }
 export function gatherAmounts(state: GameState, payload: Record<string, any>): ItemAmount[] {
   const world = requireWorld(state);
-  if (payload.ruleId !== undefined) { const rule = world.rules.recipes.find(rule => rule.id === payload.ruleId); assert(rule, 'WORLD_RECIPE', '采集规则不存在'); return structuredClone(rule.outputs); }
+  if (payload.ruleId !== undefined) { const rule = world.rules.recipes.find(rule => rule.id === payload.ruleId); assert(rule, 'WORLD_RECIPE', '采集规则不存在'); const totals = new Map<string, number>(); for (const output of rule.outputs) totals.set(output.itemId, (totals.get(output.itemId) || 0) + output.quantity); return [...totals].map(([itemId, quantity]) => ({ itemId, quantity })); }
   const itemId = id(payload.itemId), quantity = natural(payload.quantity ?? 1, '采集数量', 1_000_000); assert(quantity > 0, 'WORLD_INPUTS', '采集数量必须大于0');
   assert(world.items.some(item => item.id === itemId), 'WORLD_ITEM', '采集物品不存在'); return [{ itemId, quantity }];
 }
