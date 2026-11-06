@@ -21,6 +21,7 @@ import { executeEngine } from '../world/engine';
 import { applyAiPacket, createAiExchange, previewAiPacket, resolveAiReaction, resumeAiDecisions, type AiContext, type ExchangeKind } from '../ai/protocol';
 import { assetReferences, canReadAsset, exportAssets, restoreAssets, saveImageAsset, validateAssetReferences } from './assets';
 import { accountInput, passwordHash, verifyPassword } from './accounts';
+import { newAiDisplay } from '../shared/ai-display';
 
 export interface ServerOptions {
   dataDir: string; distDir?: string; hostToken?: string; engine?: any; content?: any;
@@ -280,6 +281,10 @@ export async function createApplication(options: ServerOptions) {
       const governance = body.governance === undefined ? {} : object(body.governance);
       if (governance.system !== undefined && !['democracy','dictatorship'].includes(governance.system) || governance.ownerVeto !== undefined && typeof governance.ownerVeto !== 'boolean') throw new ApiError(400, 'governance', '治理方式无效');
       state.world = newWorld(memberId, body.mode as WorldMode, governance);
+      if (body.mode === 'ai' && (account || body.aiProtocol === 2)) {
+        if (body.freedom !== undefined && !['A','B','C'].includes(body.freedom)) throw new ApiError(400, 'ai_freedom', '请选择自由度 A、B 或 C');
+        state.world.ai.display = newAiDisplay(body.freedom || 'B');
+      }
     }
     const inviteCode = randomBytes(9).toString('base64url').toUpperCase();
     db.transaction(() => {
