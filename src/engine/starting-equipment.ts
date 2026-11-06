@@ -19,6 +19,7 @@ export function startingEquipmentOptions(actor:Actor){return(['class','backgroun
 
 /** Grant only source-defined packages once; clients supply a package selector, never item quantities. */
 export function grantStartingEquipment(actor:Actor):boolean{
+  if(actor.profile==='free')return false;
   if(actor.kind==='monster'||actor.kind==='companion'&&actor.choices?.monsterId||actor.draft||actor.choices?._startingEquipmentGranted)return false;
   const selection=(actor.choices?.startingEquipment||{}) as StartingEquipmentSelection;
   assert(selection&&typeof selection==='object'&&!Array.isArray(selection),'INVALID_STARTING_EQUIPMENT','Starting equipment choices must be an object');
