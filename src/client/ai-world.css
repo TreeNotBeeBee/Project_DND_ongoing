@@ -6,3 +6,4 @@
 .ai-owner-selection{position:static;max-width:none;max-height:60%;margin:0 14px 12px;flex:none}.ai-owner-selection .ai-selection{max-width:1100px}
 @media(max-width:700px){.ai-map-settings{top:auto;bottom:110px;max-height:calc(100% - 190px)}.ai-world .ai-map-host-panel{max-height:calc(100% - 130px);overflow:auto}}
 .ai-map-frame{min-height:min(180px,35dvh)}.ai-world .ai-player-map{min-height:0}.ai-composer{max-height:40dvh;overflow:auto}
+[data-ui-theme=light] .ai-world .w-button.secondary{color:#405772;border-color:#8fa1b8;background:#fff}[data-ui-theme=light] .ai-world-header nav button{color:#405772}[data-ui-theme=light] .ai-world-header nav button.active{color:#88612f}[data-ui-theme=light] .ai-freedom{color:#805c2c}
