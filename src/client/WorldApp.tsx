@@ -14,6 +14,7 @@ import './world-shell.css';
 import { WorldHome } from './WorldHome';
 import { UiPreferencesProvider } from './UiPreferences';
 const WorldStandardWizard = lazy(() => import('./WorldStandardWizard'));
+const AIWorld = lazy(() => import('./AIWorld'));
 
 const modeNames: Record<WorldMode, string> = { gm: '真人GM', ai: 'AI主持', 'co-create': '自由共创' };
 const capabilityNames: Record<Capability, string> = { 'review.map': '地图审核', 'review.rules': '规则审核', 'review.creatures': '生物审核', 'review.story': '叙事审核', 'manage.characters': '管理角色', 'manage.members': '注册成员', 'manage.knowledge': '解锁图鉴', 'manage.rounds': '推进回合' };
@@ -97,6 +98,7 @@ function WorldAppBody() {
   if (game.loading) return <main className="world-gateway"><div className="w-gateway-panel"><div><p className="w-eyebrow">JigeRPG</p><h1>正在打开世界…</h1><p className="w-muted">读取身份、角色和服务器已知资料。</p></div></div></main>;
   if (!game.account || !game.snapshot || game.legacySession) return <WorldHome game={game} />;
   if (!game.snapshot.world) return <main className="world-app"><div className="w-main"><WorldEmpty title="这份战役尚未迁入新世界流程">原始数据仍在服务器。请先导出备份，再由房主确认旧卡的归属与新模式。</WorldEmpty><div className="w-actions"><button className="w-button primary" onClick={async () => saveWorldJson(await api('/api/export'), 'JigeRPG-original-backup.json')}>导出原始备份</button><button className="w-button secondary" onClick={() => void game.logout()}>退出并创建新世界</button></div></div></main>;
+  if (game.snapshot.world.ai.display?.version === 2) return <WorldFeedback.Provider value={acknowledged => <WorldPending game={game} onAcknowledged={acknowledged} />}><Suspense fallback={<main className="world-app"><WorldEmpty title="正在打开AI冒险…" /></main>}><AIWorld game={game} pendingPanel={<WorldPending game={game} />} /></Suspense></WorldFeedback.Provider>;
   return <WorldWorkspace game={game} />;
 }
 export function WorldApp() { return <UiPreferencesProvider><WorldAppBody /></UiPreferencesProvider>; }
