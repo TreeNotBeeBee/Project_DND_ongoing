@@ -1,6 +1,28 @@
 # JigeRPG platform contract
 
-The production client uses the world contract described below. The original native command API remains available for historical compatibility and trusted engine calls, with world-mode gates enforced by the server.
+New AI worlds use the independent AI display contract below. Native character and co-creation contracts remain available for their own modes and historical compatibility; they cannot calculate or mutate a display-v2 world.
+
+## Accounts and world selection (beta.2, schema 3)
+
+- `GET /api/account` returns `{account:{id,username,displayName,canCreateWorld}|null,legacySession?}`. `POST /api/account/register` / `login` accept `{username,password,displayName?,hostToken?}` and return `{account}`. Passwords use native Node 26 Argon2id. Host-token authorization persists creation permission on the account; remote player accounts can join invitations.
+- `POST /api/account/logout` clears account and world sessions. `POST /api/account/link-current` binds an existing unlinked world identity after account login. `/api/recover` can bind an unlinked legacy identity using its recovery code; names never determine identity.
+- `GET /api/worlds` returns only the account's authorized worlds as `{worlds:[{id,name,mode,phase,role,isOwner,updatedAt}]}`. `POST /api/worlds/enter {worldId}` returns `Snapshot`; `/api/worlds/leave {}` clears the world session and retains the account.
+- Authenticated `POST /api/campaigns` accepts `{name,mode,governance?,freedom?:'A'|'B'|'C'}`. A new account-owned AI world defaults to display v2. Invitations remain `/api/join {inviteCode,name?}`; repeat joining uses the same member ID.
+- Cookies `jige_account` and `jige_session` are HttpOnly/SameSite=Strict and Secure on the active public tunnel. A linked member requires its matching account cookie, including WSS handshakes. Changing account or world revokes the old world session.
+
+## AI-authoritative display protocol v2
+
+`Snapshot.world.ai.display` contains the projected independent state. `Snapshot.state.actors` is empty and no native Actor derivation or world-energy recovery runs. Technical JSON/type/reference/size checks, authorization, revision checks, transactional receipts and visibility filtering remain active. HP, abilities and other AI game values are never clamped or checked against game rules.
+
+- Owner `POST /api/ai/export {kind}` returns `{packet,schema,prompt,template?}`; `kind` is `initialize`, `player_selection`, `turn_context` or `roll_results`. The initialization template contains the live campaign/exchange/revision envelope and five module groups. Display revision changes only when game context changes, so draft and portrait saves do not invalidate replies.
+- Owner `POST /api/ai/preview {packet}` returns `{valid,errors,summary,missingGroups,pendingConfirmations,packet?}`. Invalid/unsupported JSON can be saved as a raw draft. See [v2 schema](reference/ai-display-reply-v2.schema.json) and [examples](examples/ai-v2/).
+- `ai.display.initialize {packet}` / `ai.display.apply {packet}` accept fixed version-2 initialize/update replies. Updates upsert/delete complete entities or narratives by stable ID. The AI cannot write bindings, member authority or player profiles. Duplicate operation IDs and decision IDs do not apply twice.
+- `ai.display.draft.save {raw}`, `ai.display.freedom.set {freedom}` (before initialization), `ai.display.field.confirm {id,accept}`, `ai.display.map.set {map|null}`, `ai.display.entity.position {id,position|null}` and `ai.display.roll {sides,count,purpose?}` are owner-only. Dice return faces only. `world.start {}` begins an initialized display world.
+- `ai.display.select {actorId}` / `release {}` bind/release the calling member's PC without a second registration step. `ai.display.action {actorId,type?,text,targetIds?}` stores server-bound untrusted behavior; it never spends resources or moves a token.
+- `ai.display.profile {image?,publicFieldIds?}` affects only the caller's bound PC. Other PCs receive no detailed fields by default; explicit publication cannot reveal GM-only fields. Image overrides persist independently from AI entity updates.
+- Native commands, legacy `ai.apply`, governance and rule-engine migration are rejected in display worlds. Archives cannot silently switch protocols. Export/restore preserve display state, private data and bindings through the existing owner-only backup route.
+
+Initialization editions are `5e2014` and `5e2024` metadata. Unknown editions are reported; no silent conversion occurs. Field source labels (`module`, `ai`, `unknown`) are declarations. Freedom A holds AI additions for individual acceptance or blank values; B/C require no individual acceptance. Schema limits reject forbidden control characters, excessive nesting/volume and invalid fields, not topic words or unreasonable game numbers.
 
 ## World contract (v2)
 
