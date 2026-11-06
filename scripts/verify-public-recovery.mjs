@@ -51,13 +51,19 @@ async function socketSnapshot(origin,cookie){
 try{
   runtime=await createApplication({dataDir,distDir:resolve(root,'dist')});
   let address=await runtime.listen(0),local='http://localhost:'+address.port;
-  const gm=await post(local,'/api/campaigns',{name:'Real public recovery QA',gmName:'QA GM',hostToken:runtime.hostToken});
+  const gm=await post(local,'/api/campaigns',{name:'Real public recovery QA',gmName:'QA GM',hostToken:runtime.hostToken,mode:'co-create',governance:{system:'democracy',ownerVeto:true}});
   const first=await startTunnel(address.port);
   const joined=await post(first,'/api/join',{inviteCode:gm.payload.inviteCode,name:'QA mobile player'});
   assert.match(joined.setCookie,/Secure/);
-  const command={operationId:randomUUID(),expectedRev:gm.payload.state.rev,type:'actor.create',payload:{name:'Persistent public actor',draft:true}};
+  const command={operationId:randomUUID(),expectedRev:gm.payload.state.rev,type:'character.create',payload:{actor:{name:'Persistent public actor'}}};
   const committed=await post(local,'/api/command',command,gm.cookie);
-  assert.equal((await socketSnapshot(first,joined.cookie)).state.rev,committed.payload.snapshot.state.rev);
+  const actorId=committed.payload.snapshot.offers[0].id;
+  const requested=await post(first,'/api/command',{operationId:randomUUID(),expectedRev:committed.payload.snapshot.state.rev,type:'character.claim',payload:{actorId}},joined.cookie);
+  const registered=await post(local,'/api/command',{operationId:randomUUID(),expectedRev:requested.payload.snapshot.state.rev,type:'character.register',payload:{actorId,approved:true}},gm.cookie);
+  const privateNpc=await post(local,'/api/command',{operationId:randomUUID(),expectedRev:registered.payload.snapshot.state.rev,type:'character.create',payload:{actor:{name:'Private QA creature',kind:'monster',hidden:true}}},gm.cookie);
+  const confirmed=privateNpc.payload.snapshot,observed=await socketSnapshot(first,joined.cookie);
+  assert.equal(observed.state.rev,confirmed.state.rev);assert.equal(observed.state.actors.length,1);assert.equal(observed.state.actors[0].id,actorId);
+  assert.ok(!JSON.stringify(observed).includes('Private QA creature'));assert.equal(observed.world.governance.ownerVeto,true);
   const page=await fetch(first+'/');assert.equal(page.status,200);assert.match(await page.text(),/assets\/app-/);
   for(const path of ['/.git/config','/data/game.sqlite','/src/server/app.ts','/node_modules/koa/package.json'])assert.equal((await fetch(first+path)).status,404);
   console.log(JSON.stringify({firstTunnel:true,https:true,secureCookie:true,wss:true,privateFilesBlocked:true}));
@@ -69,10 +75,10 @@ try{
   const second=await startTunnel(address.port);assert.notEqual(second,first);assert.equal(runtime.serverId,serverId);
   const recovered=await post(second,'/api/recover',{recoveryCode:joined.payload.recoveryCode});
   assert.equal(recovered.payload.session.member.id,joined.payload.session.member.id);
-  assert.equal((await socketSnapshot(second,recovered.cookie)).state.rev,committed.payload.snapshot.state.rev);
+  const reconnected=await socketSnapshot(second,recovered.cookie);assert.equal(reconnected.state.rev,confirmed.state.rev);assert.equal(reconnected.state.actors[0].id,actorId);assert.ok(!JSON.stringify(reconnected).includes('Private QA creature'));
   const gmRecovered=await post(second,'/api/recover',{recoveryCode:gm.payload.recoveryCode});
   const duplicate=await post(second,'/api/command',command,gmRecovered.cookie);
-  assert.equal(duplicate.payload.snapshot.state.rev,committed.payload.snapshot.state.rev);
+  assert.equal(duplicate.payload.snapshot.state.rev,confirmed.state.rev);assert.equal(duplicate.payload.duplicate,true);
   assert.equal(duplicate.payload.snapshot.state.actors.filter(a=>a.name==='Persistent public actor').length,1);
-  console.log(JSON.stringify({secondTunnel:true,urlChanged:true,localSurvivedTunnelLoss:true,serverRestart:true,identityRecovered:true,originalOperationDeduplicated:true,wssReconnected:true,dataIsolated:true}));
+  console.log(JSON.stringify({secondTunnel:true,urlChanged:true,localSurvivedTunnelLoss:true,serverRestart:true,identityRecovered:true,originalOperationDeduplicated:true,wssReconnected:true,worldGovernancePreserved:true,privateNpcFiltered:true,registeredHeroPreserved:true,dataIsolated:true}));
 }finally{await stopTunnel();if(runtime)await runtime.close();}
