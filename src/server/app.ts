@@ -13,11 +13,17 @@ import { openDatabase, CODE_VERSION, SCHEMA_VERSION, onlineBackup } from './data
 import { ApiError, RateLimiter, authorizeCommand, confidentialProjection, cryptoDice, equalSecret, hash, secret } from './security.js';
 import { validateBackupState } from './validation.js';
 import { prepareActorCommand,validateActorOwnership } from './companions.js';
+import { newWorld, type WorldMode } from '../shared/world';
+import { isCharacterCommand, resolveCharacterCommand, projectWorld, validateWorldEnvelope, capabilities } from './world-controller';
+import { resolveWorldCommand, isWorldCommand } from '../world/index';
+import { advanceWorldTime } from '../world/clock';
+import { assetReferences, canReadAsset, exportAssets, restoreAssets, saveImageAsset, validateAssetReferences } from './assets';
 
 export interface ServerOptions {
   dataDir: string; distDir?: string; hostToken?: string; engine?: any; content?: any;
   publicOrigin?: string; localOrigins?: string[]; sessionDays?: number;
   dice?: Dice;
+  now?: () => number;
   bodyLimits?: Partial<typeof DEFAULT_BODY_LIMITS>;
 }
 export const DEFAULT_BODY_LIMITS=Object.freeze({large:64*1024*1024,command:12*1024*1024,small:16*1024});
@@ -34,6 +40,7 @@ export async function createApplication(options: ServerOptions) {
   for(const value of Object.values(limits))if(!Number.isSafeInteger(value)||value<1)throw new Error('请求体大小配置必须为正整数字节数');
   const storage = await openDatabase(options.dataDir);
   const { db } = storage;
+  const clock = options.now || Date.now;
   let engine: any;
   let content: any;
   try {
@@ -75,14 +82,21 @@ export async function createApplication(options: ServerOptions) {
   function gmAuth(ctx: any) { const session = auth(ctx); if (session.member.role !== 'gm') throw new ApiError(403, 'gm_only', '只有主持人可以执行此操作'); return session; }
   function hostAuth(ctx: any) { const token = ctx.get('x-jige-host-token') || ctx.get('authorization').replace(/^Bearer\s+/i, ''); if (!equalSecret(token, hostToken)) throw new ApiError(403, 'host_only', '需要本机主机凭据'); }
   function campaign(id: string) { const row: any = db.prepare('SELECT * FROM campaigns WHERE id=?').get(id); if (!row) throw new ApiError(404, 'campaign_missing', '战役不存在'); return row; }
+  function worldContext(campaignId: string) {
+    const members = db.prepare('SELECT id,name,role FROM members WHERE campaign_id=?').all(campaignId) as Member[];
+    return { now: Math.max(0, Math.floor(clock())), members, onlineMemberIds: [...new Set([...clients.values()].filter(c => c.campaignId === campaignId).map(c => c.memberId))], dice: options.dice || cryptoDice, resolveEngine: (state: GameState, command: Command, dice: Dice) => engine.resolveCommand(state, command, dice, state.combat.active ? undefined : { economy: 'world', skipResources: state.world?.rules.energy || state.world?.mode === 'co-create' ? ['ap'] : [] }) };
+  }
   function snapshot(session: {member:Member;campaignId:string}): Snapshot {
     const row = campaign(session.campaignId);
-    const raw = json(row.state) as GameState;
+    let raw = json(row.state) as GameState;
+    if (raw.world) raw = advanceWorldTime(raw, worldContext(session.campaignId)).state;
     const projected = engine.projectState ? engine.projectState(copy(raw), session.member) : raw;
     const state = confidentialProjection(projected, session.member);
     const members = (db.prepare('SELECT id,name,role FROM members WHERE campaign_id=? ORDER BY role,id').all(session.campaignId) as Member[]).map(m => ({ ...m, online: [...clients.values()].some(c => c.memberId === m.id) }));
+    if (raw.world) return { session, members, ...projectWorld(raw, session, members, engine), ...(raw.world.ownerId === session.member.id ? { inviteCode: row.invite_code } : {}) } as Snapshot;
     return { session, state, members, ...(session.member.role === 'gm' ? { inviteCode: row.invite_code } : {}) };
   }
+  const assetContext = { db, raw: (id: string) => json(campaign(id).state) as GameState, projected: snapshot };
   function issueSession(ctx: any, memberId: string) {
     const token = secret();
     db.prepare('INSERT INTO sessions(token_hash,member_id,expires_at) VALUES (?,?,?)').run(hash(token), memberId, Date.now() + sessionDuration);
@@ -144,13 +158,30 @@ export async function createApplication(options: ServerOptions) {
   });
   router.get('/api/health', ctx => sendJson(ctx, { ok: true, version: CODE_VERSION, serverId: storage.serverId }));
   router.get('/api/host', async (ctx: any) => { hostAuth(ctx); sendJson(ctx, { ...tunnelStatus, qrDataUrl: publicOrigin ? await QRCode.toDataURL(publicOrigin, { width: 256, margin: 2 }) : null, localUrl, serverId: storage.serverId, version: CODE_VERSION }); });
-  router.get('/api/content', ctx => sendJson(ctx, { entries: content.entries, source: content.source || 'SRD 5.2.1 — CC BY 4.0', coverage: content.coverage }));
+  router.get('/api/content', ctx => {
+    const session = sessionByToken(cookieToken(ctx));
+    if (!session) return sendJson(ctx, { entries: [], source: content.source || 'SRD 5.2.1 — CC BY 4.0' });
+    const raw = json(campaign(session.campaignId).state) as GameState;
+    const owner = raw.world ? raw.world.ownerId === session.member.id : session.member.role === 'gm';
+    const known = new Set(raw.actors.filter(a => a.ownerId === session.member.id).flatMap(a => a.knownEntries || []));
+    const entries = (content.entries || []).filter((entry: any) => owner || !raw.world || known.has(entry.id));
+    const custom = raw.world ? raw.actors.filter(a => a.kind !== 'hero' && (owner || known.has('actor:' + a.id))).map(a => { const d = engine.deriveActor(a); return { id: 'actor:' + a.id, name: a.name, category: 'monster', description: a.story || '', source: '本世界设定', automation: 'automatic', data: { abilities: a.abilities, maxHp: a.hp.max, ac: d.ac, speed: d.speed, actions: d.attacks, resistances: a.resistances, immunities: a.immunities, vulnerabilities: a.vulnerabilities } }; }) : [];
+    sendJson(ctx, { entries: [...entries, ...custom], source: content.source || 'SRD 5.2.1 — CC BY 4.0', ...(owner ? { coverage: content.coverage } : {}) });
+  });
+  router.post('/api/assets', (ctx: any) => { const session = auth(ctx); limiter.check(`asset:${session.member.id}`, 30); sendJson(ctx, saveImageAsset(assetContext, session, object(ctx.request.body).dataUrl), 201); });
+  router.get('/api/assets/:id', (ctx: any) => { const session = auth(ctx), id = ctx.params.id; if (!canReadAsset(assetContext, session, id)) throw new ApiError(404, 'asset_missing', '图片不存在或不可见'); const row = db.prepare('SELECT mime,bytes FROM assets WHERE id=?').get(id) as any; ctx.type = row.mime; ctx.body = row.bytes; });
   router.post('/api/campaigns', (ctx: any) => {
     const body = object(ctx.request.body); limiter.check(`create:${ipOf(ctx)}`, 5);
     if (!equalSecret(body.hostToken, hostToken)) throw new ApiError(403, 'host_only', '创建战役需要本机主机凭据');
     const id = randomUUID(), memberId = randomUUID(), recoveryCode = secret();
     const name = cleanName(body.name, '新的冒险'); const member: Member = { id: memberId, name: cleanName(body.gmName, '主持人'), role: 'gm' };
     const state: GameState = engine.createGameState(name); state.id = id; state.rev = 0; state.events ||= []; state.choices ||= [];
+    if (body.mode !== undefined) {
+      if (!['gm','ai','co-create'].includes(body.mode)) throw new ApiError(400, 'world_mode', '请选择有效的房间模式');
+      const governance = body.governance === undefined ? {} : object(body.governance);
+      if (governance.system !== undefined && !['democracy','dictatorship'].includes(governance.system) || governance.ownerVeto !== undefined && typeof governance.ownerVeto !== 'boolean') throw new ApiError(400, 'governance', '治理方式无效');
+      state.world = newWorld(memberId, body.mode as WorldMode, governance);
+    }
     const inviteCode = randomBytes(9).toString('base64url').toUpperCase();
     db.transaction(() => {
       const now = new Date().toISOString();
@@ -203,8 +234,20 @@ export async function createApplication(options: ServerOptions) {
         }
       }
       const originalCommand = copy(command);
-      authorizeCommand(state,command,session.member,{allowPlayerFinalization:typeof engine.validateBuild==='function'});
+      if (state.world) {
+        validateWorldEnvelope(command);
+        const owner = state.world.ownerId === session.member.id;
+        const directInventory = command.type === 'inventory.equip';
+        if (directInventory && !owner && !capabilities(state, session.member).includes('manage.characters')) throw new ApiError(403, 'intent_required', '请提交角色行动，按当前模式审核或回合结算');
+        if (!isCharacterCommand(command.type) && !isWorldCommand(command.type) && command.type !== 'ai.apply') {
+          const admin = owner && ['gm.pause','gm.undo'].includes(command.type);
+          const dictatorshipMap = owner && state.world.mode === 'co-create' && state.world.governance.system === 'dictatorship' && command.type === 'scene.update';
+          if (!admin && !dictatorshipMap && !(owner && state.world.mode === 'gm') && command.type !== 'choice.resolve') throw new ApiError(403, 'intent_required', '当前模式要求先提交行动意图或世界提案');
+          authorizeCommand(state,command,session.member,{allowPlayerFinalization:typeof engine.validateBuild==='function'});
+        }
+      } else authorizeCommand(state,command,session.member,{allowPlayerFinalization:typeof engine.validateBuild==='function'});
       if (command.expectedRev !== row.revision) throw new ApiError(409,'stale_revision','战役已更新，请根据最新状态重试',{snapshot:snapshot(session)});
+      validateAssetReferences(assetContext, session, command.payload);
       let next: GameState, drafts: any[];
       if (command.type === 'gm.undo') {
         const previous: any = db.prepare("SELECT rowid,* FROM operations WHERE campaign_id=? AND undone=0 AND command_type!='gm.undo' ORDER BY rowid DESC LIMIT 1").get(row.id);
@@ -212,6 +255,7 @@ export async function createApplication(options: ServerOptions) {
         const wanted = command.payload?.operationId;
         if (wanted && wanted !== previous.operation_id) throw new ApiError(409,'undo_order','只能撤销最近尚未撤销的操作');
         next = json(previous.before_state); next.id = state.id;
+        if (state.world && next.world) { next.world.ownerId = state.world.ownerId; next.world.mode = state.world.mode; next.world.governance = copy(state.world.governance); }
         drafts = [{type:'gm.undo',actorId:command.actorId,message:`主持人撤销了 ${previous.command_type}`,gmOnly:false,changes:{operationId:previous.operation_id}}];
         const priorCommand=json(previous.command_json);
         if(previous.command_type==='migration') db.prepare('DELETE FROM migrations WHERE campaign_id=? AND fingerprint=?').run(row.id,priorCommand.fingerprint);
@@ -223,10 +267,15 @@ export async function createApplication(options: ServerOptions) {
         db.prepare('UPDATE operations SET undone=1 WHERE rowid=?').run(previous.rowid);
       } else {
         const roles=new Map<string,Member['role']>((db.prepare('SELECT id,role FROM members WHERE campaign_id=?').all(row.id) as Member[]).map(member=>[member.id,member.role]));
-        prepareActorCommand(state,command,session.member,roles);
+        const modern = Boolean(state.world);
+        if (!modern) prepareActorCommand(state,command,session.member,roles);
         let resolution: any;
-        try { resolution = engine.resolveCommand(copy(state),command,options.dice||cryptoDice); }
-        catch (error: any) { throw new ApiError(400,typeof engine.RuleError==='function'&&error instanceof engine.RuleError?error.code:'rule_validation',error?.message || '规则校验未通过'); }
+        try {
+          if (modern && isCharacterCommand(command.type)) resolution = resolveCharacterCommand(state, command, session.member, worldContext(session.campaignId).members, engine, clock());
+          else if (modern && isWorldCommand(command.type)) resolution = resolveWorldCommand(state, command, session.member, worldContext(session.campaignId));
+          else resolution = engine.resolveCommand(copy(state),command,options.dice||cryptoDice);
+        }
+        catch (error: any) { if (error instanceof ApiError) throw error; throw new ApiError(400,typeof engine.RuleError==='function'&&error instanceof engine.RuleError?error.code:'rule_validation',error?.message || '规则校验未通过'); }
         if (!resolution?.state || !Array.isArray(resolution.events)) throw new Error('规则引擎返回格式无效');
         next = resolution.state; drafts = resolution.events;
         if (resolution.choices) next.choices = resolution.choices;
@@ -234,7 +283,7 @@ export async function createApplication(options: ServerOptions) {
           const oldIds = new Set(state.actors.map(a => a.id));
           next.actors.filter(a => !oldIds.has(a.id)).forEach(a => { a.ownerId = session.member.id; a.hidden = false;if(typeof engine.validateBuild!=='function')a.draft=true; });
         }
-        if(session.member.role==='player'&&typeof engine.validateBuild==='function')for(const actor of next.actors.filter(a=>a.ownerId===session.member.id&&!a.draft)){
+        if(!modern&&session.member.role==='player'&&typeof engine.validateBuild==='function')for(const actor of next.actors.filter(a=>a.ownerId===session.member.id&&!a.draft)){
           const problems=engine.validateBuild(actor);if(!Array.isArray(problems)||problems.length)throw new ApiError(400,'invalid_build',Array.isArray(problems)?problems.join('；'):'建卡验证未通过');
         }
         if(session.member.role==='player')for(const actor of next.actors.filter(a=>a.ownerId===session.member.id)){
@@ -246,6 +295,7 @@ export async function createApplication(options: ServerOptions) {
         if(next.actors.length>500)throw new ApiError(400,'actor_limit','单战役角色数量超过 500');
         validateActorOwnership(next,roles);
       }
+      if (state.world && next.world && !['profile.update','draft.save','draft.delete','vote.cast','vote.preference','governance.grant'].includes(command.type)) next.world.gameplayRev = state.world.gameplayRev + 1;
       next.id = state.id; next.rev = state.rev + 1;
       const appended = appendEvents(state,next,drafts,command.operationId,row.event_sequence);
       persistState(row.id,next,appended.sequence);
@@ -259,6 +309,8 @@ export async function createApplication(options: ServerOptions) {
   });
   router.post('/api/migrate', (ctx: any) => {
     const session = auth(ctx); limiter.check(`migrate:${session.member.id}`,10);
+    const current = json(campaign(session.campaignId).state) as GameState;
+    if (current.world && current.world.ownerId !== session.member.id) throw new ApiError(403, 'owner_only', '旧卡导入由房主管理，玩家请领取角色');
     const body = object(ctx.request.body); if (!body.payload || typeof body.payload !== 'object') throw new ApiError(400,'migration_invalid','请选择有效的旧 JSON 存档');
     const fingerprint = hash(canonical(body.payload));
     const report = db.transaction(() => {
@@ -283,12 +335,12 @@ export async function createApplication(options: ServerOptions) {
   router.get('/api/export', (ctx: any) => {
     const session=auth(ctx); const row=campaign(session.campaignId); const state:GameState=json(row.state);
     ctx.set('Content-Disposition',`attachment; filename="jigerpg-${row.id}.json"`);
-    if(session.member.role!=='gm'){const projected=confidentialProjection(engine.projectState?engine.projectState(copy(state),session.member):state,session.member);return sendJson(ctx,{format:'jigerpg-actors',version:1,exportedAt:new Date().toISOString(),actors:projected.actors.filter(a=>a.ownerId===session.member.id)});}
-    sendJson(ctx,{format:'jigerpg-campaign',version:1,schemaVersion:SCHEMA_VERSION,codeVersion:CODE_VERSION,serverId:storage.serverId,campaignId:row.id,exportedAt:new Date().toISOString(),state,members:db.prepare('SELECT id,name,role FROM members WHERE campaign_id=?').all(row.id),migrations:db.prepare('SELECT report FROM migrations WHERE campaign_id=?').all(row.id).map((r:any)=>json(r.report))});
+    if(session.member.role!=='gm'){const projected=state.world?projectWorld(state,session,worldContext(row.id).members,engine).state!:confidentialProjection(engine.projectState?engine.projectState(copy(state),session.member):state,session.member);const actors=projected.actors.filter(a=>a.ownerId===session.member.id);return sendJson(ctx,{format:'jigerpg-actors',version:1,exportedAt:new Date().toISOString(),actors,assets:exportAssets(db,row.id,assetReferences(actors))});}
+    sendJson(ctx,{format:'jigerpg-campaign',version:1,schemaVersion:SCHEMA_VERSION,codeVersion:CODE_VERSION,serverId:storage.serverId,campaignId:row.id,exportedAt:new Date().toISOString(),state,assets:exportAssets(db,row.id),members:db.prepare('SELECT id,name,role FROM members WHERE campaign_id=?').all(row.id),migrations:db.prepare('SELECT report FROM migrations WHERE campaign_id=?').all(row.id).map((r:any)=>json(r.report))});
   });
   router.post('/api/restore',async(ctx:any)=>{
     const session=gmAuth(ctx), body=object(ctx.request.body), backup=object(body.backup);
-    if(backup.format!=='jigerpg-campaign'||backup.version!==1||backup.schemaVersion!==SCHEMA_VERSION||backup.campaignId!==session.campaignId) throw new ApiError(400,'backup_invalid','请选择当前战役、兼容版本的完整备份');
+    if(backup.format!=='jigerpg-campaign'||backup.version!==1||![1,SCHEMA_VERSION].includes(backup.schemaVersion)||backup.campaignId!==session.campaignId) throw new ApiError(400,'backup_invalid','请选择当前战役、兼容版本的完整备份');
     const candidate=validateBackupState(copy(object(backup.state)));
     validateActorOwnership(candidate,new Map((db.prepare('SELECT id,role FROM members WHERE campaign_id=?').all(session.campaignId) as Member[]).map(member=>[member.id,member.role])));
     if(candidate.id!==session.campaignId||!Array.isArray(candidate.actors)||candidate.actors.length>500||!Array.isArray(candidate.events)||!Array.isArray(candidate.choices)||!candidate.scene||!candidate.combat) throw new ApiError(400,'backup_invalid','备份状态结构无效');
@@ -297,6 +349,11 @@ export async function createApplication(options: ServerOptions) {
     await onlineBackup(db,join(storage.dataDir,'backups'),'before-restore');
     db.transaction(()=>{
       const row=campaign(session.campaignId),before:GameState=json(row.state); candidate.rev=before.rev+1;
+      if (before.world) {
+        if (!candidate.world) { candidate.world = newWorld(before.world.ownerId, before.world.mode, before.world.governance); for (const actor of candidate.actors.filter(a => a.kind === 'hero')) { actor.registration = 'requested'; actor.requestedBy = actor.ownerId; actor.hidden = true; } }
+        candidate.world.ownerId = before.world.ownerId; candidate.world.mode = before.world.mode; candidate.world.governance = copy(before.world.governance); candidate.world.gameplayRev = before.world.gameplayRev + 1;
+      }
+      restoreAssets(db, row.id, backup.assets, new Set(worldContext(row.id).members.map(member => member.id)));
       const beforeMigrations=db.prepare('SELECT fingerprint,member_id,report FROM migrations WHERE campaign_id=?').all(row.id);
       const operationId=`restore:${randomUUID()}`;
       const appended=appendEvents(before,candidate,[{type:'restore',message:'主持人恢复了战役备份',gmOnly:true}],operationId,row.event_sequence);
@@ -346,10 +403,31 @@ export async function createApplication(options: ServerOptions) {
     for(const[ws,c]of clients){const active=db.prepare('SELECT 1 FROM sessions WHERE token_hash=? AND expires_at>?').get((ws as any).sessionHash,Date.now());if(!active){ws.close(4001,'session expired');continue;}if(Date.now()-c.lastPong>65_000){ws.terminate();continue;}if(ws.readyState===WebSocket.OPEN){ws.ping();ws.send(JSON.stringify({type:'ping'}));}}
     db.prepare('DELETE FROM sessions WHERE expires_at<=?').run(Date.now());
   },25_000);heartbeat.unref();
+  const worldClock=setInterval(()=>{
+    try {
+      for(const record of db.prepare('SELECT id,state FROM campaigns').all() as {id:string;state:string}[]){
+        const probe=json(record.state) as GameState;
+        if(!probe.world?.proposals.some(p=>p.status==='open'&&p.closesAt<=clock()))continue;
+        let changed=false;
+        db.transaction(()=>{
+          const row=campaign(record.id),before=json(row.state) as GameState;
+          const result=advanceWorldTime(before,worldContext(record.id));
+          if(!result.events.length)return;
+          const operationId=`clock:${record.id}:${before.rev}`;
+          result.state.rev=before.rev+1; result.state.world!.gameplayRev=before.world!.gameplayRev+1;
+          const appended=appendEvents(before,result.state,result.events,operationId,row.event_sequence);
+          persistState(row.id,result.state,appended.sequence);
+          db.prepare('INSERT INTO operations(campaign_id,member_id,operation_id,command_type,command_json,before_state,events,created_at) VALUES(?,?,?,?,?,?,?,?)').run(row.id,'__clock__',operationId,'world.clock',JSON.stringify({operationId,type:'world.clock',expectedRev:before.rev}),JSON.stringify(before),JSON.stringify(appended.events),new Date().toISOString());
+          changed=true;
+        })();
+        if(changed)broadcast(record.id);
+      }
+    }catch(error){console.error('[world-clock]',error instanceof Error?error.message:'时钟更新失败');}
+  },1000);worldClock.unref();
   let closed=false;
   return { app,server,db,hostToken,serverId:storage.serverId,dataDir:storage.dataDir,setPublicOrigin,
     getTunnelStatus:()=>({...tunnelStatus}),
     listen:async(port=8080,host='127.0.0.1')=>{await new Promise<void>((ok,no)=>{server.once('error',no);server.listen(port,host,()=>{server.off('error',no);ok();});});const address=server.address() as AddressInfo;localUrl=`http://localhost:${address.port}`;origins.add(localUrl);origins.add(`http://127.0.0.1:${address.port}`);return address;},
-    close:async()=>{if(closed)return;closed=true;clearInterval(heartbeat);for(const ws of clients.keys())ws.terminate();await new Promise<void>(ok=>wss.close(()=>ok()));if(server.listening)await new Promise<void>((ok,no)=>server.close(e=>e?no(e):ok()));await storage.close();}
+    close:async()=>{if(closed)return;closed=true;clearInterval(heartbeat);clearInterval(worldClock);for(const ws of clients.keys())ws.terminate();await new Promise<void>(ok=>wss.close(()=>ok()));if(server.listening)await new Promise<void>((ok,no)=>server.close(e=>e?no(e):ok()));await storage.close();}
   };
 }

@@ -62,6 +62,15 @@ export function useGame() {
     });
     return () => { disposed = true; };
   }, [refresh]);
+  const contentKey = snapshot?.world?.ownerId === snapshot?.session.member.id
+    ? snapshot?.state.actors.filter(a => a.kind !== 'hero').map(a => `${a.id}:${a.name}:${a.hp.max}:${JSON.stringify(a.customActions || [])}`).join('|')
+    : snapshot?.state.actors.filter(a => a.ownerId === snapshot.session.member.id).flatMap(a => a.knownEntries || []).sort().join('|');
+  useEffect(() => {
+    if (!snapshot) { setEntries([]); setCoverage(null); return; }
+    let disposed = false;
+    void api<{ entries: ContentEntry[]; coverage?: unknown }>('/api/content').then(data => { if (!disposed) { setEntries(data.entries); setCoverage(data.coverage ?? null); } }).catch(reason => { if (!disposed) setError(reason instanceof Error ? reason.message : '图鉴读取失败'); });
+    return () => { disposed = true; };
+  }, [snapshot?.session.member.id, contentKey]);
   const writePending = useCallback((rows: PendingCommand[]) => {
     pendingRef.current = rows; setPending(rows);
     const active = stateRef.current;
