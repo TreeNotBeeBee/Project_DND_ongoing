@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import * as engine from '../src/engine/index.ts';
 import { newWorld } from '../src/shared/world.ts';
 import { resolveWorldCommand } from '../src/world/index.ts';
-import { createAiExchange, previewAiPacket, applyAiPacket, resolveAiReaction, resumeAiDecisions, type AiContext, type AiPacket } from '../src/ai/protocol.ts';
-import type { Actor, ActionDefinition, GameState, Dice } from '../src/shared/model.ts';
+import { createAiExchange, previewAiPacket, applyAiPacket, resolveAiReaction, resumeAiDecisions, resolveAiGameCommand, type AiContext, type AiPacket } from '../src/ai/protocol.ts';
+import type { Actor, ActionDefinition, GameState, Dice, Member } from '../src/shared/model.ts';
 const owner = { id: 'owner', role: 'gm' as const, name: 'Owner' }, player = { id: 'player', role: 'player' as const, name: 'Player' };
 function fixture(source: 'program' | 'ai' = 'program') {
   const state = engine.createGameState('AI protocol proof'); state.world = newWorld(owner.id, 'ai'); state.world.ai.diceSource = source;
@@ -34,7 +34,7 @@ test('initialization maps external NPC references to program IDs and creates unc
   const packet = reply(exported.packet, { decisionId: 'init-1', lore: 'A world', characters: [{ id: 'outside-hero', name: 'Available Hero', story: 'Public story', notes: 'Private character note' }], npcs: [{ id: 'outside-npc', name: 'Guide', manual: { maxHp: 25 } }], npcBehaviors: [{ actorId: 'outside-npc', kind: 'idle' }] }, 'initialize');
   const before = structuredClone(exported.state), preview = previewAiPacket(exported.state, packet, f.ctx); assert.equal(preview.valid, true, preview.errors.join('\n')); assert.deepEqual(exported.state, before);
   const out = applyAiPacket(exported.state, packet, f.ctx), hero = out.state.actors.find(actor => actor.name === 'Available Hero')!, npc = out.state.actors.find(actor => actor.name === 'Guide')!;
-  assert.equal(hero.registration, 'available'); assert.equal(hero.ownerId, ''); assert.equal(hero.profile, 'free'); assert.equal(hero.hp.max, 10); assert.equal(npc.ownerId, owner.id); assert.equal(npc.hp.max, 25);
+  assert.equal(hero.registration, 'available'); assert.equal(hero.ownerId, owner.id); assert.equal(hero.hidden, true); assert.equal(hero.profile, 'free'); assert.equal(hero.hp.max, 10); assert.equal(npc.ownerId, owner.id); assert.equal(npc.hp.max, 25);
   assert.notEqual(hero.id, 'outside-hero'); assert.equal(out.state.world!.npcBehaviors[0].actorId, npc.id); assert.deepEqual(applyAiPacket(out.state, packet, f.ctx).events, []);
   const bad = reply(exported.packet, { decisionId: 'invalid-init', characters: [{ name: 'Would be created' }], npcBehaviors: [{ actorId: 'missing', kind: 'idle' }] }, 'initialize');
   assert.equal(previewAiPacket(exported.state, bad, f.ctx).valid, false); assert.throws(() => applyAiPacket(exported.state, bad, f.ctx)); assert.deepEqual(exported.state, before);
@@ -83,4 +83,72 @@ test('AI-dice Shield persists private pools, records a real player choice when d
   const supplement = reply(next.packet, { decisionId: 'supplement', steps: [{ id: 'resolve', type: 'command', rollId: 'damage', command: { type: 'choice.resolve', payload: { choiceId: choice.id, optionId: 'decline' } } }], aiRolls: [{ id: 'damage', expression: '1d6', rolls: [4], total: 4 }] });
   const changedChoice = structuredClone(supplement); (changedChoice.payload.steps as any[])[0].command.payload.optionId = 'cast'; assert.equal(previewAiPacket(next.state, changedChoice, f.ctx).valid, false);
   out = applyAiPacket(next.state, supplement, f.ctx); assert.equal(out.state.choices.length, 0); assert.equal(out.state.actors[1].hp.current, target.hp.current - 4); out = resumeAiDecisions(out.state, f.ctx); assert.deepEqual(applyAiPacket(out.state, packet, f.ctx).events, []); assert.equal(f.rolled, 0);
+});
+function planned(source: 'program' | 'ai', shield = false) {
+  const f = fixture(source), { attacker, target } = actors(f.state, shield); f.state.world!.phase = 'setup';
+  let operation = 0; const call = (state: GameState, type: string, payload: Record<string, unknown>, member: Member = owner) => resolveWorldCommand(state, { operationId: 'proof:' + ++operation, expectedRev: 0, type, payload }, member, f.ctx).state;
+  let state = call(f.state, 'world.configure', { rules: { ...f.state.world!.rules, energy: { maximum: 10, initial: 10, perRound: 10, recoveryMode: 'round', recovery: 1 }, costs: { action: 3, move: 1 } } });
+  state = call(state, 'world.start', {});
+  state = call(state, 'intent.save', { intent: { actorId: attacker.id, type: 'action', targetIds: [target.id], payload: { actionId: 'custom:attack' } } });
+  state = call(state, 'intent.save', { intent: { actorId: target.id, type: 'move', payload: { path: [{ x: 2, y: 0 }] } } }, player);
+  state = call(state, 'turn.end', {}); state = call(state, 'turn.end', {}, player);
+  return { ...f, state, attacker, target, call, attackId: state.world!.round.intents[0].id, moveId: state.world!.round.intents[1].id };
+}
+for (const source of ['program', 'ai'] as const) test(`${source} intent decisions execute actual attack and movement, spend AP/MP once, finish and start the next round`, () => {
+  const f = planned(source), exported = createAiExchange(f.state, 'turn_context', f.ctx);
+  const packet = reply(exported.packet, { decisionId: 'intent-round', completeRound: true, steps: [{ id: 'attack-intent', type: 'intent', intentId: f.attackId, approve: true, ...(source === 'ai' ? { rollId: 'attack-dice' } : {}) }, { id: 'move-intent', type: 'intent', intentId: f.moveId, approve: true }], ...(source === 'ai' ? { aiRolls: [{ id: 'attack-dice', expression: '1d20+1d6', rolls: [10, 4], total: 14 }] } : {}) });
+  const out = applyAiPacket(exported.state, packet, f.ctx); assert.equal(out.state.world!.round.phase, 'intermission');
+  assert.deepEqual(out.state.world!.round.intents.map(intent => intent.status), ['executed', 'executed']);
+  assert.equal(out.state.actors[0].resources.find(resource => resource.id === 'ap')!.current, 7); assert.equal(out.state.actors[0].resources.find(resource => resource.id === 'mp')!.current, 8);
+  assert.equal(out.state.actors[1].resources.find(resource => resource.id === 'ap')!.current, 9); assert.equal(out.state.actors[1].position.x, 2); assert.equal(out.state.actors[1].hp.current, source === 'ai' ? 6 : 9);
+  assert.deepEqual(applyAiPacket(out.state, packet, f.ctx).events, []);
+  const next = f.call(out.state, 'round.start', {}); assert.equal(next.world!.round.number, 2); assert.equal(next.world!.round.phase, 'planning'); assert.equal(next.world!.round.intents.length, 0);
+  assert.equal(next.actors[0].resources.find(resource => resource.id === 'mp')!.current, 8); assert.equal(next.actors[0].resources.find(resource => resource.id === 'ap')!.current, 8);
+});
+test('AI intent reaction survives restart and defers all later intents and round completion without repeated resource costs', () => {
+  const f = planned('ai', true), exported = createAiExchange(f.state, 'turn_context', f.ctx), packet = reply(exported.packet, { decisionId: 'intent-shield', completeRound: true, steps: [{ id: 'attack-intent', type: 'intent', intentId: f.attackId, approve: true, rollId: 'hit' }, { id: 'move-intent', type: 'intent', intentId: f.moveId, approve: true }], aiRolls: [{ id: 'hit', expression: '1d20', rolls: [10], total: 10 }] });
+  let out = applyAiPacket(exported.state, packet, f.ctx); assert.equal(out.state.world!.round.intents[0].status, 'executed'); assert.equal(out.state.world!.round.intents[1].status, 'planned'); assert.equal(out.state.world!.round.phase, 'planning');
+  const choice = out.state.choices[0]; out = resolveAiReaction(JSON.parse(JSON.stringify(out.state)), { operationId: 'player-shield', expectedRev: 0, type: 'choice.resolve', payload: { choiceId: choice.id, optionId: 'cast' } }, f.ctx.dice, f.raw);
+  out = resumeAiDecisions(out.state, f.ctx); assert.equal(out.state.choices.length, 0); assert.equal(out.state.world!.round.phase, 'intermission'); assert.equal(out.state.actors[1].position.x, 2);
+  assert.equal(out.state.actors[0].resources.find(resource => resource.id === 'ap')!.current, 7); assert.equal(out.state.actors[0].resources.find(resource => resource.id === 'mp')!.current, 8); assert.equal(out.state.actors[1].resources.find(resource => resource.id === 'slot-1')!.current, 1);
+  assert.deepEqual(applyAiPacket(out.state, packet, f.ctx).events, []);
+});
+test('turn export waits for online frozen participants; rejected and incomplete decisions cannot silently spend or finish', () => {
+  const f = planned('ai'); f.state.world!.round.ended = [owner.id]; assert.throws(() => createAiExchange(f.state, 'turn_context', f.ctx), /online round participants/);
+  const exported = createAiExchange(f.state, 'turn_context', { ...f.ctx, onlineMemberIds: [owner.id] }); assert.ok(exported.packet);
+  f.state.world!.round.ended.push(player.id); const ready = createAiExchange(f.state, 'turn_context', f.ctx), before = structuredClone(ready.state);
+  const incomplete = reply(ready.packet, { decisionId: 'incomplete', completeRound: true, steps: [{ id: 'decline', type: 'intent', intentId: f.attackId, approve: false }] });
+  assert.throws(() => applyAiPacket(ready.state, incomplete, f.ctx), /explicit decision/); assert.deepEqual(ready.state, before);
+  const reject = reply(ready.packet, { decisionId: 'reject-all', steps: [{ id: 'decline', type: 'intent', intentId: f.attackId, approve: false }, { id: 'decline-move', type: 'intent', intentId: f.moveId, approve: false }] });
+  const out = applyAiPacket(ready.state, reject, f.ctx); assert.equal(out.state.world!.round.phase, 'intermission'); assert.equal(out.state.actors[0].resources.find(resource => resource.id === 'ap')!.current, 10); assert.equal(out.state.actors[0].resources.find(resource => resource.id === 'mp')!.current, 10);
+});
+test('runtime AI increments spawn mapped NPCs, grant existing items and individual knowledge, and apply explicit free stats and experience once', () => {
+  const f = fixture(), { target } = actors(f.state); f.state.world!.items = [{ id: 'crystal', name: 'Crystal', description: '' }]; f.state.world!.rules.growth = { kind: 'tracks', tracks: [{ id: 'adventure', name: 'Adventure', curve: [10, 20], pointsPerLevel: 2, upgrades: [{ target: 'str', cost: 1, amount: 1 }] }] };
+  const exported = createAiExchange(f.state, 'turn_context', f.ctx), packet = reply(exported.packet, { decisionId: 'increments', steps: [
+    { id: 'spawn', type: 'command', command: { type: 'actor.create', payload: { id: 'new-npc', name: 'New NPC', customActions: [action({ costs: [] })], position: { x: 2, y: 0 } } } },
+    { id: 'npc-attack', type: 'command', command: { type: 'action.use', actorId: 'new-npc', targetIds: [target.id], payload: { actionId: 'custom:attack' } } },
+    { id: 'reward', type: 'command', command: { type: 'inventory.add', actorId: target.id, payload: { contentId: 'world:crystal', quantity: 3 } } },
+    { id: 'unlock', type: 'command', command: { type: 'knowledge.unlock', actorId: target.id, payload: { entryId: 'spell:fireball' } } },
+    { id: 'stats', type: 'ruling', command: { type: 'character.patch', actorId: target.id, payload: { patch: { abilities: { str: 35 }, manual: { maxHp: 40, ac: 18 }, hp: { current: 25 } } } } },
+    { id: 'xp', type: 'ruling', command: { type: 'growth.award', actorId: target.id, payload: { awards: [{ trackId: 'adventure', amount: 15 }] } } },
+  ], narratives: [{ text: 'The newcomer arrives.', actorIds: ['new-npc'] }] });
+  const preview = previewAiPacket(exported.state, packet, f.ctx); assert.equal(preview.valid, true, preview.errors.join('\n')); assert.ok(preview.summary.some(line => line.includes('maxHp') && line.includes('40')));
+  const out = applyAiPacket(exported.state, packet, f.ctx), npc = out.state.actors.find(actor => actor.name === 'New NPC')!, hero = out.state.actors.find(actor => actor.id === target.id)!;
+  assert.notEqual(npc.id, 'new-npc'); assert.equal(npc.kind, 'monster'); assert.equal(npc.ownerId, owner.id); assert.equal(npc.registration, 'registered');
+  assert.equal(hero.hp.max, 40); assert.equal(hero.hp.current, 25); assert.equal(hero.abilities.str, 35); assert.equal(hero.inventory.find(item => item.contentId === 'world:crystal')!.quantity, 3); assert.ok(hero.knownEntries!.includes('spell:fireball')); assert.deepEqual(hero.growth!.tracks.adventure, { level: 2, xp: 5, totalXp: 15, points: 2 });
+  assert.equal(out.state.world!.ai.narratives[0].actorIds![0], npc.id); assert.deepEqual(applyAiPacket(out.state, packet, f.ctx).events, []);
+});
+test('external game-effect whitelist rejects unknown payloads, AP tampering, seats, bad experience and democratic direct overrides atomically', () => {
+  const f = fixture(), { target } = actors(f.state), exported = createAiExchange(f.state, 'turn_context', f.ctx), before = structuredClone(exported.state);
+  for (const command of [
+    { type: 'gm.adjust', actorId: target.id, payload: { maxHp: 100 } },
+    { type: 'actor.create', payload: { name: 'Forbidden', kind: 'hero' } },
+    { type: 'actor.create', payload: { name: 'Forbidden', ownerId: player.id } },
+    { type: 'character.patch', actorId: target.id, payload: { patch: { ownerId: owner.id } } },
+    { type: 'character.patch', actorId: target.id, payload: { patch: { resources: [{ id: 'ap', name: 'AP', current: 100, max: 100, recovery: 'manual' }] } } },
+    { type: 'growth.award', actorId: target.id, payload: { awards: [{ trackId: 'missing', amount: 10 }] } },
+    { type: 'inventory.add', actorId: target.id, payload: { contentId: 'world:missing', quantity: 1 } },
+  ]) { const packet = reply(exported.packet, { decisionId: 'bad', steps: [{ id: 'bad', type: 'command', command }] }); assert.equal(previewAiPacket(exported.state, packet, f.ctx).valid, false); assert.throws(() => applyAiPacket(exported.state, packet, f.ctx)); assert.deepEqual(exported.state, before); }
+  const democratic = structuredClone(f.state); democratic.world!.mode = 'co-create';
+  assert.throws(() => resolveAiGameCommand(democratic, { operationId: 'forbidden', expectedRev: 0, type: 'character.patch', actorId: target.id, payload: { patch: { manual: { maxHp: 100 } } } }, f.ctx), /Democratic/);
 });

@@ -53,16 +53,16 @@ const initializePayload = z.strictObject({
   characters: z.array(actorInputSchema).max(500).optional(), npcs: z.array(actorInputSchema).max(500).optional(), monsters: z.array(actorInputSchema).max(500).optional(),
   items: z.array(arbitrary).max(2000).optional(), nodes: z.array(arbitrary).max(1000).optional(), npcBehaviors: z.array(arbitrary).max(500).optional(),
 });
-export const effectCommands = ['action.use', 'actor.move', 'actor.rest', 'actor.deathSave', 'inventory.equip', 'inventory.consume', 'gm.adjust', 'effect.add', 'effect.remove', 'choice.resolve'] as const;
+export const effectCommands = ['action.use', 'actor.move', 'actor.rest', 'actor.deathSave', 'actor.create', 'inventory.add', 'inventory.equip', 'inventory.consume', 'knowledge.unlock', 'character.patch', 'growth.award', 'gm.adjust', 'effect.add', 'effect.remove', 'choice.resolve'] as const;
 const commandSchema = z.strictObject({ type: z.enum(effectCommands), actorId: id.optional(), payload: arbitrary.optional(), targetIds: z.array(id).max(500).optional() });
 const stepSchema = z.discriminatedUnion('type', [
   z.strictObject({ id, type: z.literal('command'), command: commandSchema, rollId: id.optional() }),
-  z.strictObject({ id, type: z.literal('intent'), intentId: id, approve: z.boolean() }),
+  z.strictObject({ id, type: z.literal('intent'), intentId: id, approve: z.boolean(), rollId: id.optional() }),
   z.strictObject({ id, type: z.literal('ruling'), command: commandSchema }),
   z.strictObject({ id, type: z.literal('roll'), expression: z.string().min(1).max(200), rollId: id }),
 ]);
 const rollSchema = z.strictObject({ id, expression: z.string().min(1).max(200), rolls: z.array(z.number().int().min(1).max(1000)).max(2000), total: z.number().int().min(-1_000_000_000).max(1_000_000_000) });
-const decisionPayload = z.strictObject({ decisionId: id, narratives: z.array(z.strictObject({ text, actorIds: z.array(id).max(500).optional() })).max(500).optional(), steps: z.array(stepSchema).max(500).optional(), aiRolls: z.array(rollSchema).max(500).optional() });
+const decisionPayload = z.strictObject({ decisionId: id, completeRound: z.boolean().optional(), narratives: z.array(z.strictObject({ text, actorIds: z.array(id).max(500).optional() })).max(500).optional(), steps: z.array(stepSchema).max(500).optional(), aiRolls: z.array(rollSchema).max(500).optional() });
 const envelope = { protocol: z.literal('jigerpg-ai'), version: z.literal(1), campaignId: id, exchangeId: id, worldRevision: z.number().int().nonnegative() };
 export const aiReplySchema = z.discriminatedUnion('packetType', [
   z.strictObject({ ...envelope, packetType: z.literal('initialize'), payload: initializePayload }),

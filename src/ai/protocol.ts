@@ -2,9 +2,13 @@ import { z } from 'zod';
 import type { Actor, Command, Dice, GameState, Resolution } from '../shared/model';
 import type { AiExchange } from '../shared/world';
 import { assert, rollExpression, RuleError, uid } from '../engine/dice';
-import { configureWorld } from '../world/rounds';
+import { configureWorld, executeIntent } from '../world/rounds';
 import { executeEngine } from '../world/engine';
-import { parseAiReply, AI_REPLY_JSON_SCHEMA, type AiContext, type AiPacket, type AiReply, type ExchangeKind } from './schema';
+import { grantItems } from '../world/inventory';
+import { grantExperience, reconcileWorldBonuses } from '../world/growth';
+import { getEntry } from '../content/index';
+import { validateTokenPosition } from '../engine/map';
+import { parseAiReply, actorInputSchema, AI_REPLY_JSON_SCHEMA, type AiContext, type AiPacket, type AiReply, type ExchangeKind } from './schema';
 export * from './schema';
 
 type Log = Resolution['events'];
@@ -12,7 +16,7 @@ type Decision = Extract<AiReply, { packetType: 'decision' }>;
 type Step = NonNullable<Decision['payload']['steps']>[number];
 type Roll = NonNullable<Decision['payload']['aiRolls']>[number];
 interface Pool extends Roll { sides: number[]; offset: number }
-interface Receipt { canonical: string; status: 'pending' | 'applied' | 'failed'; next: number; used: string[]; reaction?: string; error?: string; narratives: boolean }
+interface Receipt { canonical: string; status: 'pending' | 'applied' | 'failed'; next: number; used: string[]; reaction?: string; error?: string; narratives: boolean; ids?: Record<string, string> }
 interface Reaction { pool?: Pool; decisionId: string; stepId: string; requested?: { choiceId: string; optionId: string; side: number }; done?: boolean }
 const providers = new WeakMap<Dice, Pool>();
 const canonical = (value: any): string => value && typeof value === 'object' ? Array.isArray(value) ? '[' + value.map(canonical).join(',') + ']' : '{' + Object.keys(value).sort().filter(key => value[key] !== undefined).map(key => JSON.stringify(key) + ':' + canonical(value[key])).join(',') + '}' : JSON.stringify(value);
@@ -22,6 +26,10 @@ function reactions(exchange: AiExchange): Record<string, Reaction> { return (exc
 function exchangeBy(state: GameState, id: string) { const result = state.world!.ai.exchanges.find(entry => entry.id === id); assert(result, 'AI_EXCHANGE', 'This exchange was not exported by this campaign'); return result; }
 function reactionBy(state: GameState, id: string) { for (const exchange of state.world!.ai.exchanges) { const record = own(exchange.payload._reactions, id) as Reaction | undefined; if (record) return { exchange, record }; } throw new RuleError('AI_REACTION', 'The private AI continuation is missing'); }
 function access(state: GameState, ctx: AiContext) { assert(state.world && state.world.mode === 'ai', 'AI_MODE', 'AI packets can only change an AI-hosted world'); assert(ctx.member.id === state.world.ownerId && ctx.members.some(member => member.id === ctx.member.id), 'AI_OWNER', 'Only the world owner may export or confirm an AI import'); }
+function endedParticipants(state: GameState, ctx: AiContext): void {
+  assert(state.world!.phase === 'running', 'AI_PHASE', 'Turn context requires a running world');
+  assert(state.world!.round.participants.every(id => !ctx.onlineMemberIds.includes(id) || state.world!.round.ended.includes(id)), 'AI_TURN_OPEN', 'All online round participants must end their turn before AI settlement');
+}
 function note(log: Log, type: string, message: string, actorId?: string) { log.push({ type, actorId, message, source: 'jigerpg-ai/v1' }); }
 const safeScene = (scene: GameState['scene']) => ({ width: scene.width, height: scene.height, gridFeet: scene.gridFeet, walls: scene.walls, terrain: scene.terrain, fog: scene.fog });
 const intentPayloadKeys = new Set(['actionId', 'origin', 'path', 'options', 'slotLevel', 'commandType', 'itemId', 'equipped', 'ruleId', 'nodeId', 'items', 'text']);
@@ -44,6 +52,7 @@ function contextPayload(state: GameState, ctx: AiContext): Record<string, unknow
 export function createAiExchange(input: GameState, kind: ExchangeKind, ctx: AiContext): { state: GameState; packet: AiPacket; schema: unknown; prompt: string } {
   access(input, ctx); assert(['initialize', 'player_selection', 'turn_context', 'roll_results'].includes(kind), 'AI_KIND', 'Unknown export type');
   if (kind === 'initialize') assert(input.world!.phase === 'setup', 'AI_PHASE', 'Initialization is only available during setup');
+  if (kind === 'turn_context') endedParticipants(input, ctx);
   const state = structuredClone(input), world = state.world!, payload = contextPayload(state, ctx);
   if (kind === 'roll_results') { const source = ctx.exchangeId ? exchangeBy(state, ctx.exchangeId) : [...world.ai.exchanges].reverse().find(exchange => exchange.rolls?.length); payload.rolls = structuredClone(source?.rolls || []); payload.replyTo = source?.id; }
   const id = uid(); world.ai.exchanges.push({ id, kind, worldRevision: world.gameplayRev, round: world.round.number, payload: {}, createdAt: ctx.now, appliedDecisionIds: [] });
@@ -55,7 +64,15 @@ export function createAiExchange(input: GameState, kind: ExchangeKind, ctx: AiCo
 }
 
 const bounded = z.number().finite().min(-1_000_000).max(1_000_000), text = z.string().max(4000), id = z.string().min(1).max(256);
+const abilities = z.strictObject({ str: bounded, dex: bounded, con: bounded, int: bounded, wis: bounded, cha: bounded }).partial();
+const resourceInput = z.strictObject({ id, name: z.string().max(100), current: bounded.min(0), max: bounded.min(0), recovery: z.enum(['short', 'long', 'turn', 'manual']) });
+const patchSchema = z.strictObject({ abilities: abilities.optional(), manual: z.strictObject({ maxHp: bounded.min(1), proficiency: bounded, ac: bounded, speed: bounded.min(0) }).partial().optional(), hp: z.strictObject({ current: bounded.min(0).optional(), temp: bounded.min(0).optional() }).optional(), resources: z.array(resourceInput).max(1000).optional(), customActions: z.array(z.record(z.string(), z.unknown())).max(1000).optional(), skills: z.array(id).max(1000).optional(), expertise: z.array(id).max(1000).optional(), saveProficiencies: z.array(z.enum(['str', 'dex', 'con', 'int', 'wis', 'cha'])).max(6).optional(), resistances: z.array(id).max(13).optional(), immunities: z.array(id).max(13).optional(), vulnerabilities: z.array(id).max(13).optional(), size: bounded.min(.25).max(4).optional() });
 const commandPayloads: Record<string, z.ZodType> = {
+  'actor.create': actorInputSchema,
+  'inventory.add': z.strictObject({ contentId: id, quantity: z.number().int().min(1).max(1_000_000).optional(), baseContentId: id.optional(), variant: z.string().max(100).optional() }),
+  'knowledge.unlock': z.strictObject({ entryId: id }),
+  'character.patch': z.strictObject({ patch: patchSchema }),
+  'growth.award': z.strictObject({ awards: z.array(z.strictObject({ trackId: id, amount: z.number().int().min(0).max(1_000_000_000) })).min(1).max(100) }),
   'action.use': z.strictObject({ actionId: id, slotLevel: z.number().int().min(0).max(9).optional(), origin: z.strictObject({ x: bounded, y: bounded }).optional(), advantage: z.number().int().min(-1).max(1).optional(), options: z.record(z.string(), z.unknown()).optional() }),
   'actor.move': z.strictObject({ path: z.array(z.strictObject({ x: bounded.int(), y: bounded.int() })).min(1).max(500) }),
   'actor.rest': z.strictObject({ kind: z.enum(['short', 'long']), hitDice: z.record(z.string(), z.number().int().min(0).max(20)).optional() }),
@@ -67,10 +84,19 @@ const commandPayloads: Record<string, z.ZodType> = {
 };
 function checkedCommand(state: GameState, command: Extract<Step, { type: 'command' | 'ruling' }>['command'], ruling = false, ctx?: AiContext): void {
   assert(commandPayloads[command.type], 'AI_COMMAND', 'This command is not an AI game effect'); commandPayloads[command.type].parse(command.payload || {});
-  if (ruling) assert(['gm.adjust', 'effect.add', 'effect.remove'].includes(command.type), 'AI_RULING', 'An external ruling can only adjust HP, resources or conditions');
+  if (ruling) assert(['gm.adjust', 'effect.add', 'effect.remove', 'character.patch', 'growth.award'].includes(command.type), 'AI_RULING', 'An external ruling can only adjust character stats, experience, HP, resources or conditions');
   if (command.actorId) { const actor = state.actors.find(actor => actor.id === command.actorId); assert(actor && !(actor.kind === 'hero' && actor.registration && actor.registration !== 'registered'), 'AI_ACTOR', 'Command refers to an unavailable actor'); }
-  else assert(command.type === 'choice.resolve', 'AI_ACTOR', 'A game effect requires actorId');
+  else assert(['choice.resolve', 'actor.create'].includes(command.type), 'AI_ACTOR', 'A game effect requires actorId');
   for (const target of command.targetIds || []) assert(state.actors.some(actor => actor.id === target), 'AI_TARGET', 'Command target does not exist');
+  const payload = command.payload || {};
+  if (command.type === 'actor.create') assert(payload.kind !== 'hero', 'AI_NPC_ONLY', 'Runtime AI spawning cannot create player-character seats');
+  if (command.type === 'inventory.add') assert(String(payload.contentId).startsWith('world:') ? state.world!.items.some(item => `world:${item.id}` === payload.contentId) : getEntry(String(payload.contentId)) && Number(payload.quantity || 1) <= 999, 'AI_ITEM', 'Only existing world items or published items in supported quantities can be awarded');
+  if (command.type === 'knowledge.unlock') assert(getEntry(String(payload.entryId)) || state.world!.items.some(item => `world:${item.id}` === payload.entryId), 'AI_KNOWLEDGE', 'Knowledge unlock must refer to an existing entry');
+  if (command.type === 'character.patch') {
+    const actor = state.actors.find(actor => actor.id === command.actorId)!; assert(actor.profile === 'free', 'AI_FREE_PATCH', 'Free stat rulings cannot silently replace standard character rules');
+    const resources = (payload.patch as any).resources as Actor['resources'] | undefined, ap = resources?.find(resource => resource.id === 'ap'), previous = actor.resources.find(resource => resource.id === 'ap');
+    assert(!ap || canonical(ap) === canonical(previous), 'AI_AP', 'AI character rulings cannot replace world-controlled AP');
+  }
   const options = command.payload?.options as Record<string, unknown> | undefined;
   assert(!options || Object.keys(options).every(key => !key.startsWith('_') && !['dice', 'rolls', 'damageTotal', 'skipResources', 'economy'].includes(key)), 'AI_COMMAND', 'Command contains a private engine override');
   if (command.type === 'action.use' && ctx?.engine.deriveActor && command.actorId) {
@@ -86,6 +112,34 @@ function checkedCommand(state: GameState, command: Extract<Step, { type: 'comman
     assert(choice.ownerId === state.world!.ownerId || choice.ownerId === '__gm__' || requested?.choiceId === choice.id && requested.optionId === command.payload?.optionId, 'AI_CHOICE_OWNER', 'AI cannot choose a player reaction without that player requesting this exact option');
   }
 }
+/** Limited external adjudication, shared with the owner-authorized server command route. */
+export function resolveAiGameCommand(input: GameState, command: Command, ctx: AiContext): Resolution { return gameCommand(input, command, ctx); }
+function gameCommand(input: GameState, command: Command, ctx: AiContext, plannedId?: string): Resolution {
+  assert(input.world && input.world.ownerId === ctx.member.id && ctx.members.some(member => member.id === ctx.member.id), 'AI_OWNER', 'Only the world owner can confirm external game effects');
+  assert(input.world.mode !== 'co-create' || input.world.governance.system === 'dictatorship', 'AI_GOVERNANCE', 'Democratic co-creation effects must follow adopted rules and proposals');
+  checkedCommand(input, command as any, false, ctx);
+  let state = structuredClone(input); const p = command.payload || {}, actor = state.actors.find(actor => actor.id === command.actorId), events: Log = [];
+  if (command.type === 'actor.create') {
+    assert(!(p.resources as Actor['resources'] | undefined)?.some(resource => resource.id === 'ap' && (resource.current || resource.max)), 'AI_AP', 'Spawn AP is governed by world rules');
+    const choices = Object.fromEntries(Object.entries((p.choices || {}) as Record<string, unknown>).filter(([key]) => ['team', 'creatureType', 'characterBuild', 'magicInitiate', 'weaponMasteries', 'startingEquipment'].includes(key)));
+    const result = executeEngine(state, { ...command, payload: { ...p, id: plannedId || uid(), ownerId: state.world!.ownerId, kind: 'monster', profile: p.profile || 'free', registration: 'registered', draft: false, choices, ...(p.profile !== 'srd2024' && !p.monsterId ? { manual: { maxHp: (p.hp as any)?.max || 10, ...(p.manual as any) } } : {}) } }, ctx);
+    const previous = new Set(state.actors.map(actor => actor.id)); state = result.state; events.push(...result.events);
+    for (const created of state.actors.filter(actor => !previous.has(actor.id))) { created.ownerId = state.world!.ownerId; created.registration = 'registered'; delete created.requestedBy; }
+  } else if (command.type === 'inventory.add' && String(p.contentId).startsWith('world:')) grantItems(state, actor!, [{ itemId: String(p.contentId).slice(6), quantity: Number(p.quantity || 1) }], command.operationId);
+  else if (command.type === 'knowledge.unlock') actor!.knownEntries = [...new Set([...(actor!.knownEntries || []), String(p.entryId)])];
+  else if (command.type === 'growth.award') { grantExperience(actor!, state.world!.rules, p.awards as { trackId: string; amount: number }[]); reconcileWorldBonuses(state); }
+  else if (command.type === 'character.patch') {
+    const patch = structuredClone((p as any).patch), previousAp = actor!.resources.find(resource => resource.id === 'ap');
+    if (patch.abilities) patch.abilities = { ...actor!.abilities, ...patch.abilities };
+    if (patch.manual) patch.manual = { ...actor!.manual, ...patch.manual };
+    if (patch.hp) patch.hp = { ...actor!.hp, ...patch.hp };
+    if (patch.resources && previousAp && !patch.resources.some((resource: any) => resource.id === 'ap')) patch.resources.push(structuredClone(previousAp));
+    Object.assign(actor!, patch); actor!.hp.max = actor!.manual!.maxHp; actor!.hp.current = Math.min(actor!.hp.current, actor!.hp.max);
+    const problems = ctx.engine.validateActor(actor!); assert(!problems.length, 'AI_CHARACTER', problems.join('; '));
+    validateTokenPosition(state.scene, actor!, actor!.position, state.actors.filter(other => other.registration === undefined || other.registration === 'registered'));
+  } else return executeEngine(state, command, ctx);
+  note(events, 'ai-external-ruling', `Owner confirmed external ${command.type}`, command.actorId); return { state, events };
+}
 function makePool(roll: Roll): Pool {
   const sides: number[] = []; let index = 0;
   const result = rollExpression(roll.expression, side => { sides.push(side); const value = roll.rolls[index++]; assert(Number.isInteger(value) && value >= 1 && value <= side, 'AI_DICE_RANGE', 'AI die is missing or outside its actual sides'); return value; });
@@ -93,6 +147,15 @@ function makePool(roll: Roll): Pool {
   return { ...structuredClone(roll), sides, offset: 0 };
 }
 function provider(pool: Pool): Dice { const dice: Dice = side => { assert(pool.offset < pool.rolls.length, 'AI_DICE_NEEDED', `AI must supply the next d${side}`); assert(pool.sides[pool.offset] === side, 'AI_DICE_NEEDED', `AI die purpose/order mismatch: next request is d${side}`); return pool.rolls[pool.offset++]; }; providers.set(dice, pool); return dice; }
+function mappedCommand(command: Extract<Step, { type: 'command' | 'ruling' }>['command'], ids: Record<string, string>): Command {
+  const mapped = structuredClone(command) as Command, map = (id: string) => own(ids, id) || id;
+  if (mapped.actorId) mapped.actorId = map(mapped.actorId);
+  if (mapped.targetIds) mapped.targetIds = mapped.targetIds.map(map);
+  const options = mapped.payload?.options as Record<string, any> | undefined;
+  if (options?.projectileTargets) options.projectileTargets = options.projectileTargets.map(map);
+  if (options?.allocations) options.allocations = Object.fromEntries(Object.entries(options.allocations).map(([id, amount]) => [map(id), amount]));
+  return mapped;
+}
 function packetInput(value: unknown): AiReply { return parseAiReply(typeof value === 'string' ? JSON.parse(value) : value); }
 function inspect(input: GameState, packet: AiReply, ctx: AiContext): Receipt | undefined {
   access(input, ctx); assert(packet.campaignId === input.id, 'AI_CAMPAIGN', 'Packet belongs to a different campaign');
@@ -109,17 +172,31 @@ function inspect(input: GameState, packet: AiReply, ctx: AiContext): Receipt | u
   for (const step of steps) if (step.type === 'roll') assert(!exchange.rolls?.some(roll => roll.id === step.rollId), 'AI_DICE_ID', 'This requested roll ID already has a recorded result');
   if (input.world!.ai.diceSource === 'program') assert(!pools.length, 'AI_DICE_SOURCE', 'AI cannot supply dice while program dice are selected');
   pools.forEach(makePool);
-  const used = new Set<string>();
+  const used = new Set<string>(), reviewed = new Set<string>(); let prospective = structuredClone(input);
   for (const step of steps) {
-    if (step.type === 'command' || step.type === 'ruling') checkedCommand(input, step.command, step.type === 'ruling', ctx);
-    if (step.type === 'intent') { assert(ctx.resolveWorldCommand, 'AI_WORLD_HOOK', 'World intent resolver is unavailable'); assert(input.world!.round.intents.some(intent => intent.id === step.intentId), 'AI_INTENT', 'Intent does not exist'); }
+    if (step.type === 'command' || step.type === 'ruling') {
+      checkedCommand(prospective, step.command, step.type === 'ruling', ctx);
+      if (step.command.type === 'actor.create') {
+        const alias = String(step.command.payload?.id || step.id); assert(!prospective.actors.some(actor => actor.id === alias), 'AI_EXTERNAL_ID', 'Spawn aliases must be unique and cannot shadow an existing actor');
+        const before = new Set(prospective.actors.map(actor => actor.id)); prospective = gameCommand(prospective, { ...step.command, operationId: 'preview:' + step.id, expectedRev: input.rev } as Command, { ...ctx, dice: () => { throw new RuleError('AI_PREVIEW_DICE', 'Character prevalidation cannot consume dice'); } }, alias).state;
+        const created = prospective.actors.find(actor => !before.has(actor.id))!; created.id = alias;
+      } else if (['character.patch', 'growth.award', 'knowledge.unlock'].includes(step.command.type) || step.command.type === 'inventory.add' && String(step.command.payload?.contentId).startsWith('world:')) prospective = gameCommand(prospective, { ...step.command, operationId: 'preview:' + step.id, expectedRev: input.rev } as Command, ctx).state;
+    }
+    if (step.type === 'intent') {
+      assert(ctx.resolveWorldCommand, 'AI_WORLD_HOOK', 'World intent resolver is unavailable');
+      const intent = input.world!.round.intents.find(intent => intent.id === step.intentId); assert(intent && ['planned', 'approved'].includes(intent.status) && !reviewed.has(intent.id), 'AI_INTENT', 'Intent is missing, already resolved, or decided twice');
+      assert(input.world!.round.ended.includes(intent.memberId), 'AI_TURN_OPEN', 'AI cannot execute an intent before its owner ends the turn');
+      assert(step.approve || !step.rollId, 'AI_DICE_USAGE', 'Rejected intents cannot consume dice'); reviewed.add(intent.id);
+      if (step.approve && intent.type === 'action') checkedCommand(input, { type: intent.payload.commandType === 'inventory.equip' ? 'inventory.equip' : 'action.use', actorId: intent.actorId, targetIds: intent.targetIds, payload: Object.fromEntries(Object.entries(intent.payload).filter(([key]) => key !== 'commandType')) }, false, ctx);
+    }
     if (step.type === 'roll') rollExpression(step.expression, () => 1);
     if ('rollId' in step && step.rollId && input.world!.ai.diceSource === 'ai') { assert(!used.has(step.rollId) && pools.some(roll => roll.id === step.rollId), 'AI_DICE_ID', 'Every AI roll reference must exist and have one purpose'); used.add(step.rollId); }
-    if (step.type === 'command' && step.rollId && input.world!.ai.diceSource === 'ai') assert(/^(?:\d*d\d+)(?:\+\d*d\d+)*$/i.test(pools.find(roll => roll.id === step.rollId)!.expression.replace(/\s/g, '')), 'AI_DICE_USAGE', 'A command die pool contains only positive dice terms; the engine calculates modifiers');
+    if ((step.type === 'command' || step.type === 'intent') && step.rollId && input.world!.ai.diceSource === 'ai') assert(/^(?:\d*d\d+)(?:\+\d*d\d+)*$/i.test(pools.find(roll => roll.id === step.rollId)!.expression.replace(/\s/g, '')), 'AI_DICE_USAGE', 'A command die pool contains only positive dice terms; the engine calculates modifiers');
   }
   if (input.world!.ai.diceSource === 'ai') assert(pools.every(roll => used.has(roll.id)), 'AI_DICE_UNUSED', 'AI supplied dice without an assigned step');
   if (input.world!.ai.diceSource === 'program') { const firstRoll = steps.findIndex(step => step.type === 'roll'); assert(firstRoll < 0 || steps.slice(firstRoll).every(step => step.type === 'roll'), 'AI_ROLL_BARRIER', 'After requesting program dice, wait for roll_results before choosing subsequent game effects'); }
-  for (const narrative of packet.payload.narratives || []) for (const actorId of narrative.actorIds || []) assert(input.actors.some(actor => actor.id === actorId), 'AI_NARRATIVE', 'Narrative actor does not exist');
+  for (const narrative of packet.payload.narratives || []) for (const actorId of narrative.actorIds || []) assert(prospective.actors.some(actor => actor.id === actorId), 'AI_NARRATIVE', 'Narrative actor does not exist');
+  if (packet.payload.completeRound) { endedParticipants(input, ctx); assert(!steps.some(step => step.type === 'roll'), 'AI_ROLL_BARRIER', 'A roll request cannot also finish the round'); }
   if (input.choices.length) assert(steps.length === 1 && steps[0].type === 'command' && steps[0].command.type === 'choice.resolve', 'AI_REACTION_BARRIER', 'Resolve the current reaction before another AI batch');
 }
 
@@ -134,9 +211,9 @@ function initialize(input: GameState, packet: Extract<AiReply, { packetType: 'in
     const { actor, hero } = pending[index]; assert(!hero || !actor.monsterId, 'AI_CHARACTER', 'A player-character offer cannot be a monster statblock');
     assert(!(actor.resources || []).some(resource => resource.id === 'ap' && (resource.max !== 0 || resource.current !== 0)), 'AI_AP', 'Initial AP is controlled by adopted world energy rules');
     const before = new Set(state.actors.map(actor => actor.id)), choices = Object.fromEntries(Object.entries(actor.choices || {}).filter(([key]) => ['characterBuild', 'magicInitiate', 'weaponMasteries', 'startingEquipment', 'team', 'creatureType'].includes(key)));
-    const result = executeEngine(state, { operationId: uid(), expectedRev: state.rev, type: 'actor.create', payload: { ...actor, ...(actor.profile !== 'srd2024' && !actor.monsterId ? { manual: { maxHp: actor.hp?.max || 10, ...actor.manual } } : {}), id: uid(), profile: actor.profile || 'free', ownerId: hero ? '' : state.world!.ownerId, kind: hero ? 'hero' : 'monster', draft: false, choices } }, ctx);
+    const result = executeEngine(state, { operationId: uid(), expectedRev: state.rev, type: 'actor.create', payload: { ...actor, ...(actor.profile !== 'srd2024' && !actor.monsterId ? { manual: { maxHp: actor.hp?.max || 10, ...actor.manual } } : {}), id: uid(), profile: actor.profile || 'free', ownerId: state.world!.ownerId, kind: hero ? 'hero' : 'monster', hidden: hero ? true : actor.hidden, draft: false, choices } }, ctx);
     state = result.state; events.push(...result.events); const created = state.actors.find(actor => !before.has(actor.id)); assert(created, 'AI_CHARACTER', 'Character constructor did not return a new card');
-    created.ownerId = hero ? '' : state.world!.ownerId; created.registration = hero ? 'available' : 'registered'; created.publicGroups = []; delete created.requestedBy;
+    created.ownerId = state.world!.ownerId; created.registration = hero ? 'available' : 'registered'; if (hero) created.hidden = true; created.publicGroups = []; delete created.requestedBy;
     mapping[external[index]] = created.id;
     const problems = [...ctx.engine.validateActor(created), ...(ctx.engine.validateBuild?.(created) || [])]; assert(!problems.length, 'AI_CHARACTER', problems.join('; '));
   }
@@ -167,11 +244,21 @@ export function applyAiPacket(input: GameState, value: unknown, ctx: AiContext):
       const step = steps[index]; let result: Resolution | undefined, pool: Pool | undefined;
       const dice = state.world!.ai.diceSource === 'ai' ? provider(pool = 'rollId' in step && step.rollId ? makePool(packet.payload.aiRolls!.find(roll => roll.id === step.rollId)!) : { id: 'missing', expression: '0', rolls: [], sides: [], total: 0, offset: 0 }) : ctx.dice;
       if (step.type === 'command' || step.type === 'ruling') {
-        checkedCommand(state, step.command, step.type === 'ruling', ctx);
-        const command = { ...step.command, operationId: `ai:${packet.exchangeId}:${index}`, expectedRev: state.rev } as Command;
-        result = executeEngine(state, command, { ...ctx, dice });
+        receipt.ids ||= {};
+        const command = { ...mappedCommand(step.command, receipt.ids), operationId: `ai:${packet.exchangeId}:${index}`, expectedRev: state.rev } as Command;
+        checkedCommand(state, command as any, step.type === 'ruling', ctx);
+        const previous = new Set(state.actors.map(actor => actor.id));
+        result = gameCommand(state, command, { ...ctx, dice });
+        if (command.type === 'actor.create') {
+          const created = result.state.actors.find(actor => !previous.has(actor.id)); assert(created, 'AI_CHARACTER', 'Spawn did not create an actor');
+          const mappedReceipt = records(exchangeBy(result.state, packet.exchangeId))[packet.payload.decisionId]; mappedReceipt.ids ||= {}; mappedReceipt.ids[String(command.payload?.id || step.id)] = created.id;
+        }
         if (step.type === 'ruling' || ['gm.adjust', 'effect.add', 'effect.remove'].includes(command.type)) note(events, 'ai-external-ruling', `Owner confirmed AI external adjudication: ${step.id}`, command.actorId);
-      } else if (step.type === 'intent') result = ctx.resolveWorldCommand!(state, { operationId: `ai:${packet.exchangeId}:${index}`, expectedRev: state.rev, type: 'intent.review', payload: { intentId: step.intentId, approve: step.approve } }, ctx.member, { ...ctx, dice });
+      } else if (step.type === 'intent') {
+        const review = ctx.resolveWorldCommand!(state, { operationId: `ai:${packet.exchangeId}:${index}`, expectedRev: state.rev, type: 'intent.review', payload: { intentId: step.intentId, approve: step.approve } }, ctx.member, { ...ctx, dice });
+        result = step.approve ? executeIntent(review.state, step.intentId, { ...ctx, dice }) : review;
+        if (step.approve) result.events.unshift(...review.events);
+      }
       else {
         const roll = rollExpression(step.expression, dice); if (pool) assert(pool.offset === pool.rolls.length && pool.expression === roll.expression, 'AI_DICE_USAGE', 'Die-request formula must match its assigned AI results');
         exchangeBy(state, packet.exchangeId).rolls ||= []; exchangeBy(state, packet.exchangeId).rolls!.push({ id: step.rollId, ...roll }); note(events, 'ai-roll', `Program audited ${step.rollId}`, undefined); events.at(-1)!.rolls = [roll];
@@ -183,7 +270,15 @@ export function applyAiPacket(input: GameState, value: unknown, ctx: AiContext):
       if (state.choices.length) { receipt.reaction = state.choices.find(choice => typeof choice.payload.aiResolutionRef === 'string')?.payload.aiResolutionRef as string | undefined || attachReaction(state, packet.exchangeId, packet.payload.decisionId, step.id, pool); records(exchangeBy(state, packet.exchangeId))[packet.payload.decisionId] = receipt; note(events, 'ai-paused', 'AI batch paused at a rule choice; remaining steps were saved'); return { state, events }; }
       if (pool) assert(pool.offset === pool.rolls.length, 'AI_DICE_USAGE', 'AI supplied extra dice that this step did not consume');
     }
-    if (!receipt.narratives) for (const narrative of packet.payload.narratives || []) state.world!.ai.narratives.push({ id: uid(), text: narrative.text, actorIds: narrative.actorIds });
+    const round = state.world!.round, otherPending = state.world!.ai.exchanges.some(entry => Object.entries((entry.payload._decisions || {}) as Record<string, Receipt>).some(([id, record]) => !(entry.id === packet.exchangeId && id === packet.payload.decisionId) && record.status === 'pending'));
+    const complete = packet.payload.completeRound ?? (!otherPending && exchangeBy(state, packet.exchangeId).kind === 'turn_context' && !steps.some(step => step.type === 'roll') && !round.intents.some(intent => round.ended.includes(intent.memberId) && ['planned', 'approved'].includes(intent.status)));
+    if (complete) {
+      assert(!otherPending, 'AI_CONTINUATION', 'Resume the previously confirmed AI continuation before completing this round');
+      endedParticipants(state, ctx); assert(!state.choices.length, 'AI_REACTION_BARRIER', 'Finish pending reactions before completing this round');
+      assert(!round.intents.some(intent => round.ended.includes(intent.memberId) && ['planned', 'approved'].includes(intent.status)), 'AI_INTENT_PENDING', 'Every ended participant intent needs an explicit decision before completing this round');
+      round.phase = 'intermission'; note(events, 'world-round-settled', `AI已完成第${round.number}回合；NPC仅执行包内明确行动`);
+    }
+    if (!receipt.narratives) for (const narrative of packet.payload.narratives || []) state.world!.ai.narratives.push({ id: uid(), text: narrative.text, actorIds: narrative.actorIds?.map(id => own(receipt.ids, id) || id) });
   }
   exchange = exchangeBy(state, packet.exchangeId); receipt = records(exchange)[packet.payload.decisionId]; receipt.status = 'applied'; receipt.narratives = true;
   if (!exchange.appliedDecisionIds.includes(packet.payload.decisionId)) exchange.appliedDecisionIds.push(packet.payload.decisionId);
@@ -194,7 +289,20 @@ export function previewAiPacket(state: GameState, value: unknown, ctx: AiContext
   try {
     const packet = packetInput(value), receipt = inspect(state, packet, ctx);
     if (packet.packetType === 'initialize' && !receipt) initialize(state, packet, { ...ctx, dice: () => { throw new RuleError('AI_PREVIEW_DICE', 'Preview must not consume random dice'); } });
-    return { valid: true, errors: [], summary: [receipt?.status === 'applied' ? 'Already applied; import is an idempotent no-op.' : packet.packetType === 'initialize' ? `Initialize world; ${(packet.payload.characters || []).length} unclaimed character offers; ${(packet.payload.npcs || []).length + (packet.payload.monsters || []).length} NPCs.` : `${(packet.payload.steps || []).length} game-effect steps; ${(packet.payload.narratives || []).length} narratives; ${state.world!.ai.diceSource} dice.`, 'External rulings require owner confirmation. Private notes and membership are not AI-authoritative.'], packet };
+    const label = (id?: string) => state.actors.find(actor => actor.id === id)?.name || id || '世界';
+    const summary = receipt?.status === 'applied' ? ['此决定已执行，再次导入不会重复执行。'] : packet.packetType === 'initialize' ? [`初始化世界：${(packet.payload.characters || []).length}张待领取角色卡、${(packet.payload.npcs || []).length + (packet.payload.monsters || []).length}名NPC。`, ...(packet.payload.characters || []).map(actor => `待领取角色：${actor.name}；${actor.profile || 'free'}；生命上限${actor.manual?.maxHp || actor.hp?.max || 10}；默认归房主保管并隐藏。`)] : (packet.payload.steps || []).map(step => {
+      if (step.type === 'intent') { const intent = state.world!.round.intents.find(intent => intent.id === step.intentId); return `${step.approve ? '批准并立即结算' : '拒绝'}意图${step.intentId}：${label(intent?.actorId)}，行动力${intent?.cost ?? '?'}${step.rollId ? `，骰池${step.rollId}` : ''}。`; }
+      if (step.type === 'roll') return `请求骰子${step.rollId}：${step.expression}。`;
+      const p = step.command.payload || {}, who = label(step.command.actorId);
+      if (step.command.type === 'actor.create') return `创建NPC ${p.name}；${p.profile || 'free'}；归房主管理。`;
+      if (step.command.type === 'character.patch') return `外部属性裁定：${who}，${JSON.stringify(p.patch)}。`;
+      if (step.command.type === 'growth.award') return `授予成长经验：${who}，${JSON.stringify(p.awards)}。`;
+      if (step.command.type === 'inventory.add') return `发放物品：${who}，${p.contentId} × ${p.quantity || 1}。`;
+      if (step.command.type === 'knowledge.unlock') return `个人解锁：${who}，${p.entryId}。`;
+      return `${step.type === 'ruling' ? '外部裁定' : '游戏效果'}：${who} → ${step.command.type} ${JSON.stringify(p)}${'rollId' in step && step.rollId ? `，骰池${step.rollId}` : ''}。`;
+    });
+    summary.push(`骰源：${state.world!.ai.diceSource === 'ai' ? 'AI逐骰验证' : '程序随机'}；外部裁定须房主确认，私人笔记及成员权限不由AI修改。`);
+    return { valid: true, errors: [], summary, packet };
   } catch (error) { return { valid: false, errors: error instanceof z.ZodError ? error.issues.map(issue => issue.path.join('.') + ': ' + issue.message) : [error instanceof Error ? error.message : String(error)], summary: [] }; }
 }
 
