@@ -106,7 +106,7 @@ export function saveIntent(state: GameState, command: Command, member: Member, c
     assert(world.mode === 'co-create' || member.id === world.ownerId, 'WORLD_PERMISSION', '此模式由主持人负责世界内容');
     const draft = world.drafts.find(draft => draft.id === payload.draftId && draft.ownerId === member.id); assert(draft, 'WORLD_DRAFT_OWNER', '请选择自己的现有草稿');
     assert(!world.round.intents.some(intent => intent.id !== existing?.id && intent.type === 'proposal' && pending(intent) && intent.payload.draftId === draft.id), 'WORLD_DUPLICATE', '此草稿已保留本轮提案费用');
-    payload.draft = structuredClone(draft);
+    payload.draft = { ...structuredClone(draft), payload: draftPayload(draft.kind, draft.payload) };
   }
   const originalIntents = world.round.intents;
   if (existing) world.round.intents = originalIntents.slice(0, originalIntents.indexOf(existing));

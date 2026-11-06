@@ -23,10 +23,11 @@ function approve(world: WorldState, proposal: WorldProposal, log: Log): void { p
 export function closeProposal(world: WorldState, proposal: WorldProposal, now: number, log: Log): void {
   if (proposal.status !== 'open') return;
   if (world.governance.system === 'dictatorship') { if (now >= proposal.closesAt) reject(proposal, log, '审批期限已到，尚未批准'); return; }
-  const deadline = now >= proposal.closesAt;
-  if (!deadline && !proposal.electorate.every(memberId => proposal.ballots[memberId])) return;
-  for (const memberId of proposal.electorate) if (!proposal.ballots[memberId]) proposal.ballots[memberId] = { vote: world.timeoutVotes[memberId] || 'abstain', source: 'timeout' };
-  const selected = proposal.electorate.map(memberId => proposal.ballots[memberId].vote), yes = selected.filter(vote => vote === 'approve').length, no = selected.filter(vote => vote === 'reject').length;
+  const deadline = now >= proposal.closesAt, manual = proposal.electorate.flatMap(memberId => proposal.ballots[memberId] ? [proposal.ballots[memberId].vote] : []);
+  const absoluteMajority = manual.filter(vote => vote === 'approve').length > proposal.electorate.length / 2 || manual.filter(vote => vote === 'reject').length > proposal.electorate.length / 2;
+  if (!deadline && !absoluteMajority && !proposal.electorate.every(memberId => proposal.ballots[memberId])) return;
+  if (deadline) for (const memberId of proposal.electorate) if (!proposal.ballots[memberId]) proposal.ballots[memberId] = { vote: world.timeoutVotes[memberId] || 'abstain', source: 'timeout' };
+  const selected = proposal.electorate.flatMap(memberId => proposal.ballots[memberId] ? [proposal.ballots[memberId].vote] : []), yes = selected.filter(vote => vote === 'approve').length, no = selected.filter(vote => vote === 'reject').length;
   if (!yes && !no) { reject(proposal, log, '全部弃权，未产生有效票'); return; }
   if (yes < no) { reject(proposal, log, `反对${no}票，赞成${yes}票`); return; }
   if (yes === no) {
@@ -61,7 +62,9 @@ export function handleGovernance(state: GameState, command: Command, member: Mem
     case 'draft.save': {
       const input = object(p.draft, '草稿'), current = input.id === undefined ? undefined : world.drafts.find(draft => draft.id === input.id);
       if (input.id !== undefined) assert(current && current.ownerId === member.id, 'WORLD_DRAFT_OWNER', '只能编辑自己的现有草稿');
-      const kind = input.kind as WorldDraft['kind'], draft: WorldDraft = { id: current?.id || `draft:${command.operationId}`, ownerId: member.id, kind, title: text(input.title, '草稿标题', 256), payload: draftPayload(kind, input.payload), updatedAt: ctx.now };
+      const kind = input.kind as WorldDraft['kind']; assert(['scene', 'rules', 'actor', 'story', 'items', 'nodes'].includes(kind), 'WORLD_DRAFT', '未知草稿种类');
+      const title = input.title === undefined || input.title === '' ? '未命名草稿' : text(input.title, '草稿标题', 256);
+      const draft: WorldDraft = { id: current?.id || `draft:${command.operationId}`, ownerId: member.id, kind, title, payload: structuredClone(object(input.payload || {}, '草稿内容')), updatedAt: ctx.now };
       if (current) world.drafts[world.drafts.indexOf(current)] = draft;
       else { assert(world.drafts.length < 2000, 'WORLD_LIMIT', '草稿数量已达上限'); world.drafts.push(draft); }
       note(log, 'draft-saved', '个人草稿已保存，不消耗行动力'); return true;
