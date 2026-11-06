@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { AiDisplayExportKind, AiDisplayView, AiFreedom, DisplayJson } from '../shared/ai-display';
+import type { Command } from '../shared/model';
 import { api, type GameClient } from './transport';
 import { AiFields, AiJsonTree } from './AIFields';
 import { WorldCopy, WorldField, saveWorldJson } from './WorldPrimitives';
@@ -11,11 +12,12 @@ const freedomNames: Record<AiFreedom, string> = { A: 'A · 按模组推进，补
 function ModulePreview({ value }: { value: Record<string, any> }) {
   return <div className="ai-five-groups">{Object.entries(groupNames).map(([id, label]) => <section className="w-surface" key={id}><h3>{label}</h3>{value[id] === undefined ? <p className="w-alert">缺少这一组</p> : <AiJsonTree value={value[id] as DisplayJson} />}</section>)}</div>;
 }
-export function AIWorkbench({ game, display }: { game: GameClient; display: AiDisplayView }) {
+export function AIWorkbench({ game, display, acknowledged }: { game: GameClient; display: AiDisplayView; acknowledged?: Command }) {
   const [draft, setDraft] = useState(display.draft?.raw || ''), [raw, setRaw] = useState(''), [kind, setKind] = useState<AiDisplayExportKind>(display.initialized ? 'turn_context' : 'initialize');
   const [exported, setExported] = useState<Exported>(), [preview, setPreview] = useState<Preview>(), [confirmed, setConfirmed] = useState(false), [error, setError] = useState(''), [busy, setBusy] = useState(false), [notice, setNotice] = useState('');
   const [sides, setSides] = useState(20), [count, setCount] = useState(1), [purpose, setPurpose] = useState('');
   useEffect(() => { if (display.initialized && kind === 'initialize') setKind('turn_context'); }, [display.initialized, kind]);
+  useEffect(() => { if (acknowledged && ['ai.display.initialize', 'ai.display.apply'].includes(acknowledged.type) && preview?.packet?.payload?.decisionId === (acknowledged.payload?.packet as any)?.payload?.decisionId) { setPreview(undefined); setConfirmed(false); setRaw(''); setNotice('安全核验成功，内容已由服务器保存。'); } }, [acknowledged, preview]);
   const run = async (task: () => Promise<void>) => { if (busy) return; setBusy(true); setError(''); setNotice(''); try { await task(); } catch (reason) { setError(reason instanceof Error ? reason.message : '请求失败'); } finally { setBusy(false); } };
   const inspect = async () => run(async () => { let packet: unknown; try { packet = JSON.parse(raw); } catch { throw new Error('返回内容不是有效 JSON。可以先保存为原始草稿，补全后再预览。'); } setPreview(await api<Preview>('/api/ai/preview', { packet })); setConfirmed(false); });
   const adopted = async () => run(async () => { if (!preview?.valid || !confirmed) return; if (await game.command(display.initialized ? 'ai.display.apply' : 'ai.display.initialize', undefined, { packet: preview.packet || JSON.parse(raw) }, [], display.initialized ? '采用AI更新' : '采用AI初始化')) { setPreview(undefined); setConfirmed(false); setRaw(''); setNotice('已采用，内容已由服务器保存。'); } });

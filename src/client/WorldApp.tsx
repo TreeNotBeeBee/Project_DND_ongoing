@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
-import type { ActionDefinition, Actor, ContentEntry, Position, Scene } from '../shared/model';
+import type { ActionDefinition, Actor, Command, ContentEntry, Position, Scene } from '../shared/model';
 import { CAPABILITIES, type Capability, type WorldDraft, type WorldMode } from '../shared/world';
 import { api, useGame, type GameClient } from './transport';
 import { useHostStatus } from './HostStatus';
@@ -95,10 +95,11 @@ export function WorldWorkspace({ game }: { game: GameClient }) {
 
 function WorldAppBody() {
   const game = useGame();
+  const [acknowledged, setAcknowledged] = useState<Command>();
   if (game.loading) return <main className="world-gateway"><div className="w-gateway-panel"><div><p className="w-eyebrow">JigeRPG</p><h1>正在打开世界…</h1><p className="w-muted">读取身份、角色和服务器已知资料。</p></div></div></main>;
   if (!game.account || !game.snapshot || game.legacySession) return <WorldHome game={game} />;
   if (!game.snapshot.world) return <main className="world-app"><div className="w-main"><WorldEmpty title="这份战役尚未迁入新世界流程">原始数据仍在服务器。请先导出备份，再由房主确认旧卡的归属与新模式。</WorldEmpty><div className="w-actions"><button className="w-button primary" onClick={async () => saveWorldJson(await api('/api/export'), 'JigeRPG-original-backup.json')}>导出原始备份</button><button className="w-button secondary" onClick={() => void game.logout()}>退出并创建新世界</button></div></div></main>;
-  if (game.snapshot.world.ai.display?.version === 2) return <WorldFeedback.Provider value={acknowledged => <WorldPending game={game} onAcknowledged={acknowledged} />}><Suspense fallback={<main className="world-app"><WorldEmpty title="正在打开AI冒险…" /></main>}><AIWorld game={game} pendingPanel={<WorldPending game={game} />} /></Suspense></WorldFeedback.Provider>;
+  if (game.snapshot.world.ai.display?.version === 2) return <WorldFeedback.Provider value={callback => <WorldPending game={game} onAcknowledged={command => { setAcknowledged(command); callback?.(command); }} />}><Suspense fallback={<main className="world-app"><WorldEmpty title="正在打开AI冒险…" /></main>}><AIWorld game={game} acknowledged={acknowledged} pendingPanel={<WorldPending game={game} onAcknowledged={setAcknowledged} />} /></Suspense></WorldFeedback.Provider>;
   return <WorldWorkspace game={game} />;
 }
 export function WorldApp() { return <UiPreferencesProvider><WorldAppBody /></UiPreferencesProvider>; }

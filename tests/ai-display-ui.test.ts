@@ -1,7 +1,7 @@
 import { before, after, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve, sep } from 'node:path';
 import { build } from 'vite';
@@ -31,6 +31,24 @@ function initialization(freedom = 'B') { return { freedom, rules: { edition: '5e
 async function generate(owner: Page, base: string) { const response = owner.waitForResponse(response => response.url() === base + '/api/ai/export' && response.request().method() === 'POST'); await owner.getByRole('button', { name: '生成初始化提示词', exact: true }).click(); return (await response).json(); }
 async function preview(owner: Page, packet: unknown) { await owner.getByLabel('AI返回的JSON', { exact: true }).fill(JSON.stringify(packet)); await owner.getByRole('button', { name: '校验并预览', exact: true }).click(); return owner.getByRole('region', { name: 'AI内容预览' }); }
 async function adopt(owner: Page, packet: unknown) { const region = await preview(owner, packet); await expect(region.getByRole('button', { name: '确认采用AI内容' })).toBeDisabled(); await region.getByLabel('我已检查预览，确认采用这份内容').check(); await region.getByRole('button', { name: '确认采用AI内容' }).click(); await expect(region).toHaveCount(0); }
+// An explicit QA opt-in captures only fictional fixture data, never a user's save.
+async function captureScreenshots(f: Awaited<ReturnType<typeof fixture>>) {
+  if (!process.env.JIGE_UI_SCREENSHOTS_DIR) return;
+  const output = resolve(process.env.JIGE_UI_SCREENSHOTS_DIR); await mkdir(output, { recursive: true });
+  const png = await f.owner.evaluate(() => {
+    const canvas = document.createElement('canvas'); canvas.width = 1200; canvas.height = 800; const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = '#45544b'; ctx.fillRect(0, 0, 1200, 800); ctx.fillStyle = '#173647'; ctx.fillRect(0, 550, 1200, 250);
+    ctx.fillStyle = '#7d7259'; ctx.fillRect(40, 265, 1120, 90); ctx.fillRect(520, 20, 90, 670); ctx.fillRect(40, 480, 1120, 65);
+    for (const [x, y, w, h] of [[80, 65, 165, 130], [310, 75, 140, 145], [695, 60, 160, 140], [930, 80, 170, 135], [90, 385, 180, 70], [335, 385, 120, 75], [710, 385, 150, 75], [940, 385, 165, 75]]) { ctx.fillStyle = '#233536'; ctx.fillRect(x - 8, y - 8, w + 16, h + 16); ctx.fillStyle = '#765e44'; ctx.fillRect(x, y, w, h); ctx.fillStyle = '#c0a16d'; ctx.fillRect(x + 12, y + 13, w - 24, 5); ctx.fillStyle = '#b2a17c'; for (let i = 0; i < Math.floor(w / 38); i++) ctx.fillRect(x + 18 + i * 36, y + 40, 10, 12); }
+    ctx.fillStyle = '#8d7551'; for (const x of [180, 555, 990]) { ctx.fillRect(x, 535, 42, 175); ctx.fillRect(x - 58, 686, 160, 25); }
+    ctx.strokeStyle = '#3c6273'; ctx.lineWidth = 2; for (let y = 580; y < 800; y += 33) { ctx.beginPath(); ctx.moveTo(0, y); ctx.bezierCurveTo(350, y - 14, 820, y + 14, 1200, y); ctx.stroke(); }
+    ctx.fillStyle = '#e5d5ae'; ctx.font = '24px Microsoft YaHei'; ctx.fillText('雾港 · 市集', 80, 310); ctx.fillText('旧码头', 1010, 760); return canvas.toDataURL('image/png');
+  });
+  const asset = await f.post(f.owner, '/api/assets', { dataUrl: png }); await f.command(f.owner, 'ai.display.map.set', { map: { width: 1200, height: 800, visibility: 'public', image: asset.url } });
+  await expect(f.player.locator('[data-ai-map-background]')).toHaveAttribute('href', asset.url);
+  for (const [name, viewport] of [['ai-player-desktop.png', { width: 1440, height: 960 }], ['ai-player-mobile.png', { width: 390, height: 844 }]] as const) { await f.player.setViewportSize(viewport); await f.player.evaluate(() => document.fonts.ready); await f.player.evaluate(() => new Promise<void>(done => requestAnimationFrame(() => requestAnimationFrame(() => done())))); await f.player.screenshot({ path: join(output, name), animations: 'disabled' }); }
+  await f.owner.getByRole('button', { name: '返回主菜单', exact: true }).click(); await expect(f.owner.getByRole('navigation', { name: '主菜单' })).toBeVisible(); await f.owner.setViewportSize({ width: 1440, height: 960 }); await f.owner.screenshot({ path: join(output, 'account-home.png'), animations: 'disabled' });
+}
 
 test('real AI wizard persists incomplete source, previews five groups and gives the player a private map without native rules', { timeout: 90000 }, async t => {
   const f = await fixture(t), { owner, player } = f;
@@ -45,8 +63,11 @@ test('real AI wizard persists incomplete source, previews five groups and gives 
   const visible = JSON.stringify(await f.state(player)); for (const secret of ['GM_RULE_SECRET', 'GM_PC_SECRET', 'GM_BACKGROUND_SECRET', 'GM_HIDDEN_ENEMY', 'OTHER_PC_BACKGROUND']) assert.ok(!visible.includes(secret), secret);
   await player.locator('[data-ai-map-entity="mist"]').press('Enter'); let dialog = player.getByRole('dialog'); await expect(dialog).toContainText('-7'); await expect(dialog).toContainText('99999'); await expect(dialog).toContainText('本人的私有线索'); await dialog.getByLabel('公开 生命', { exact: true }).check(); await dialog.getByRole('button', { name: '保存头像与公开资料' }).click(); await expect(dialog).toHaveCount(0);
   await player.locator('[data-ai-map-entity="iris"]').press('Enter'); dialog = player.getByRole('dialog'); await expect(dialog).toContainText('没有已公开的详细字段'); await dialog.getByRole('button', { name: '关闭弹窗' }).click();
-  await player.getByLabel('角色行为', { exact: true }).fill('我想调查钟楼，询问守夜人。'); await player.getByRole('button', { name: '提交行为', exact: true }).click(); await expect(player.getByLabel('角色行为', { exact: true })).toHaveValue(''); assert.equal((await f.state(player)).world.ai.display.actions[0].text, '我想调查钟楼，询问守夜人。');
+  let loseAck = true; await player.route('**/api/command', async route => { if (loseAck && route.request().postDataJSON().type === 'ai.display.action') { loseAck = false; await route.fetch(); await route.abort('failed'); } else await route.continue(); });
+  await player.getByLabel('角色行为', { exact: true }).fill('我想调查钟楼，询问守夜人。'); await player.getByRole('button', { name: '提交行为', exact: true }).click(); await expect(player.getByRole('button', { name: '按原编号安全重试' })).toBeVisible(); assert.equal((await f.state(player)).world.ai.display.actions.length, 1); await expect(player.getByLabel('角色行为', { exact: true })).toHaveValue('我想调查钟楼，询问守夜人。'); await player.getByRole('button', { name: '按原编号安全重试' }).click(); await expect(player.getByLabel('角色行为', { exact: true })).toHaveValue(''); assert.equal((await f.state(player)).world.ai.display.actions.length, 1);
+  await player.setViewportSize({ width: 390, height: 480 }); await player.locator('.ai-story-feed>summary').click(); const controls = await player.getByRole('group', { name: '地图显示控制' }).boundingBox(); assert.ok(controls && controls.y >= 0 && controls.y + controls.height <= 480); await player.getByRole('button', { name: '提交行为', exact: true }).scrollIntoViewIfNeeded(); assert.ok(await player.evaluate(() => document.documentElement.scrollHeight <= innerHeight)); await player.locator('.ai-story-feed>summary').click(); await player.setViewportSize({ width: 390, height: 844 });
   await owner.getByLabel('骰子面数').fill('6'); await owner.getByLabel('骰子数量').fill('2'); await owner.getByRole('button', { name: '生成骰面', exact: true }).click(); await expect.poll(async () => (await f.state()).world.ai.display.rolls.at(-1)?.faces).toEqual([6, 6]);  await f.runtime.setPublicOrigin('https://fictional-ai-invite.trycloudflare.com'); await owner.getByRole('navigation', { name: 'AI房主导航' }).getByRole('button', { name: '邀请', exact: true }).click(); await expect(owner.getByLabel('邀请链接', { exact: true })).toHaveValue(new RegExp('^https://fictional-ai-invite\\.trycloudflare\\.com/\\?invite=')); await expect(owner.getByAltText('加入此世界的邀请二维码')).toHaveAttribute('src', /^data:image\/png;base64,/); await expect(owner.getByText('公网邀请可用', { exact: false })).toBeVisible();
+  await captureScreenshots(f);
 });
 
 test('freedom A pending fields stay empty until explicit owner confirmation, and portrait updates remain personal', { timeout: 90000 }, async t => {
