@@ -4,8 +4,11 @@ import { CAPABILITIES, type Capability, type DisclosureGroup, type WorldView } f
 import { ApiError } from './security';
 import { validateTokenPosition } from '../engine/map';
 import { tokenFootprint } from '../engine/size';
+import { reconcileEnergy, energyLimits } from '../world/energy';
+import { micro } from '../world/fixed';
+import { createFreeCopy } from '../engine/free-copy';
 
-const TYPES = new Set(['character.create', 'character.claim', 'character.register', 'character.release', 'character.patch', 'profile.update', 'knowledge.unlock']);
+const TYPES = new Set(['character.create', 'character.copyFree', 'character.claim', 'character.register', 'character.release', 'character.patch', 'profile.update', 'knowledge.unlock']);
 export const isCharacterCommand = (type: string) => TYPES.has(type);
 export function validateWorldEnvelope(command: Command) {
   if (!command || typeof command !== 'object' || typeof command.operationId !== 'string' || !/^[A-Za-z0-9_:-]{8,128}$/.test(command.operationId)) throw new ApiError(400, 'invalid_operation', '操作编号无效');
@@ -37,11 +40,11 @@ function validateFreePatch(patch: Record<string, any>) {
   if (Object.hasOwn(patch, 'hp') && (!patch.hp || typeof patch.hp !== 'object' || Array.isArray(patch.hp))) throw new ApiError(400, 'invalid_hp', '生命数值必须为对象');
   if (patch.size !== undefined) finite(patch.size, '体型', 0.25, 4);
   for (const [key, value] of Object.entries(patch.abilities || {})) { if (!['str', 'dex', 'con', 'int', 'wis', 'cha'].includes(key)) throw new ApiError(400, 'invalid_ability', '未知基础属性'); finite(value, key); }
-  if (patch.manual) for (const [key, value] of Object.entries(patch.manual)) finite(value, key, key === 'maxHp' ? 0.000001 : 0);
+  if (patch.manual) for (const [key, value] of Object.entries(patch.manual)) { if(!['maxHp','proficiency','ac','speed'].includes(key))throw new ApiError(400,'invalid_manual','未知手动数值'); finite(value, key, key === 'maxHp' ? 1 : key === 'speed' ? 0 : -1e9); }
   if (patch.hp) { for (const [key, value] of Object.entries(patch.hp)) { if (!['current', 'max', 'temp'].includes(key)) throw new ApiError(400, 'invalid_hp', '未知生命字段'); finite(value, key, 0); } }
   if (patch.resources) {
     if (!Array.isArray(patch.resources) || patch.resources.length > 1000) throw new ApiError(400, 'invalid_resources', '资源列表无效');
-    const ids = new Set(); for (const r of patch.resources) { if (!r || typeof r.id !== 'string' || ids.has(r.id)) throw new ApiError(400, 'invalid_resources', '资源编号无效或重复'); ids.add(r.id); finite(r.max, '资源上限', 0, r.id === 'ap' ? 100 : 1e9); finite(r.current, '当前资源', 0, r.max); if (!['short', 'long', 'turn', 'manual'].includes(r.recovery)) throw new ApiError(400, 'invalid_resources', '资源恢复方式无效'); }
+    const ids = new Set(); for (const r of patch.resources) { if (!r || typeof r.id !== 'string' || ids.has(r.id)) throw new ApiError(400, 'invalid_resources', '资源编号无效或重复'); ids.add(r.id); finite(r.max, '资源上限', 0, r.id === 'ap' ? 100 : 1e9); finite(r.current, '当前资源', 0, r.max); if(r.id==='ap'){micro(r.max,'行动力上限');micro(r.current,'当前行动力');} if (!['short', 'long', 'turn', 'manual'].includes(r.recovery)) throw new ApiError(400, 'invalid_resources', '资源恢复方式无效'); }
   }
 }
 export function resolveCharacterCommand(input: GameState, command: Command, member: Member, members: Member[], engine: any, now = Date.now()): Resolution {
@@ -49,17 +52,24 @@ export function resolveCharacterCommand(input: GameState, command: Command, memb
   const p = command.payload || {}, id = command.actorId || p.actorId;
   let changed: Actor | undefined; let message = '';
   switch (command.type) {
+    case 'character.copyFree': {
+      permission(state, member, 'manage.characters');
+      changed = createFreeCopy(actorBy(state, id)); changed.ownerId = w.ownerId;
+      const errors = engine.validateActor(changed); if(errors.length)throw new ApiError(400,'invalid_character',errors.join('；'));
+      state.actors.push(changed); message = `已保留原卡并创建「${changed.name}」`; break;
+    }
     case 'character.create': {
       permission(state, member, 'manage.characters', false);
       const supplied = p.actor && typeof p.actor === 'object' ? structuredClone(p.actor) as Record<string, any> : {};
       if (w.phase === 'running' && w.mode !== 'gm' && !(w.mode === 'co-create' && w.governance.system === 'dictatorship')) {
-        if (Object.keys(supplied).some(key => !['name', 'portrait', 'story'].includes(key))) throw new ApiError(403, 'proposal_required', '开局后的自定义数值需要通过当前模式的决策');
+        if (Object.keys(supplied).some(key => !['name', 'portrait', 'story', 'kind'].includes(key)) || supplied.kind !== undefined && supplied.kind !== 'hero') throw new ApiError(403, 'proposal_required', '开局后的自定义数值需要通过当前模式的决策');
       }
       validateFreePatch(supplied);
       const kind = ['hero', 'companion', 'monster'].includes(supplied.kind) ? supplied.kind : 'hero';
       if (kind !== 'hero' && w.phase === 'running' && w.mode !== 'gm' && !(w.mode === 'co-create' && w.governance.system === 'dictatorship')) throw new ApiError(403, 'proposal_required', 'NPC与怪物必须经当前模式的决策创建');
       changed = engine.createActor({ ...supplied, id: randomUUID(), ownerId: w.ownerId, name: String(supplied.name || `${kind === 'hero' ? '角色' : '生物'} ${state.actors.length + 1}`).slice(0, 80), kind, profile: supplied.profile === 'srd2024' ? 'srd2024' : 'free', requestedBy: undefined, hidden: kind === 'hero' ? true : Boolean(supplied.hidden), draft: supplied.profile === 'srd2024' ? Boolean(supplied.draft ?? true) : false, portrait: picture(supplied.portrait), publicGroups: [], knownEntries: [] }) as Actor;
       if (kind === 'hero') changed.registration = 'available'; changed.hidden = kind === 'hero' ? true : Boolean(supplied.hidden); changed.publicGroups = []; changed.knownEntries = [];
+      if (!changed.draft) { const errors = [...engine.validateActor(changed), ...(changed.profile === 'free' ? [] : engine.validateBuild(changed))]; if (errors.length) throw new ApiError(400, 'invalid_character', errors.join('；')); }
       state.actors.push(changed); message = `创建了待领取角色「${changed.name}」`; break;
     }
     case 'character.claim': {
@@ -78,13 +88,13 @@ export function resolveCharacterCommand(input: GameState, command: Command, memb
       if (problems.length) throw new ApiError(400, 'invalid_character', problems.join('；'));
       changed.ownerId = target; changed.registration = 'registered'; changed.hidden = false; changed.draft = false; delete changed.requestedBy;
       changed.position = vacantPosition(state, changed, engine);
-      if (w.rules.energy && changed.profile === 'free') { let ap = changed.resources.find(r => r.id === 'ap'); if (!ap) { ap = { id: 'ap', name: '行动力', current: 0, max: 0, recovery: 'manual' }; changed.resources.push(ap); } const previous = Object.hasOwn(w.energyAt, changed.id); ap.max = w.rules.energy.maximum; ap.current = Math.min(ap.max, previous ? ap.current : w.rules.energy.initial ?? ap.max); w.energyAt[changed.id] = now; }
+      if (w.rules.energy && changed.profile === 'free') { const previous = Object.hasOwn(w.energyAt, changed.id); reconcileEnergy(changed,w); const ap=changed.resources.find(r=>r.id==='ap')!; if(!previous)ap.current=Math.min(ap.max,w.rules.energy.initial??ap.max); w.energyAt[changed.id] = now; }
       message = `角色「${changed.name}」已注册`; break;
     }
     case 'character.release': {
       permission(state, member, 'manage.members', false); changed = actorBy(state, id);
       if (w.round.phase === 'planning' && w.round.intents.some(i => i.actorId === changed!.id && i.status === 'planned' || i.actorId === changed!.id && i.status === 'approved')) throw new ApiError(409, 'pending_intent', '请先处理该角色本轮行动');
-      changed.registration = 'available'; changed.ownerId = w.ownerId; changed.hidden = true; delete changed.requestedBy; message = `角色「${changed.name}」已归还角色池`; break;
+      changed.registration = 'available'; changed.ownerId = w.ownerId; changed.hidden = true; delete changed.requestedBy; w.energyAt[changed.id]=now; message = `角色「${changed.name}」已归还角色池`; break;
     }
     case 'character.patch': {
       permission(state, member, 'manage.characters'); changed = actorBy(state, id);
@@ -94,9 +104,10 @@ export function resolveCharacterCommand(input: GameState, command: Command, memb
       if (Object.keys(patch).some(key => !allowed.has(key))) throw new ApiError(403, 'protected_field', '不能通过改值修改角色归属、注册或权限');
       validateFreePatch(patch); if (patch.portrait !== undefined) patch.portrait = picture(patch.portrait);
       if (patch.manual) patch.manual = { ...changed.manual, ...patch.manual };
+      if(patch.choices){ const internal=Object.fromEntries(Object.entries(changed.choices||{}).filter(([key])=>key.startsWith('_')));patch.choices={...Object.fromEntries(Object.entries(patch.choices).filter(([key])=>!key.startsWith('_'))),...internal}; }
       Object.assign(changed, patch);
-      if (changed.profile === 'free') { changed.hp.max = changed.manual!.maxHp; changed.hp.current = Math.min(changed.hp.current, changed.hp.max); }
-      const problems = engine.validateActor(changed); if (problems.length && !changed.draft) throw new ApiError(400, 'invalid_character', problems.join('；'));
+      if (changed.profile === 'free') { changed.hp.max = engine.deriveActor(changed).maxHp; changed.hp.current = Math.min(changed.hp.current, changed.hp.max); }
+      const problems = [...engine.validateActor(changed), ...(!changed.draft&&changed.profile!=='free'?engine.validateBuild(changed):[])]; if (problems.length && !changed.draft) throw new ApiError(400, 'invalid_character', problems.join('；'));
       message = `更新角色「${changed.name}」`; break;
     }
     case 'profile.update': {
@@ -143,6 +154,6 @@ export function projectWorld(raw: GameState, session: Snapshot['session'], membe
     return { id: a.id, name: a.name, portrait: a.portrait, ownerId: a.ownerId, groups, ...(groups.includes('story') ? { story: a.story || '' } : {}), ...(groups.includes('stats') ? { stats: { abilities: structuredClone(a.abilities), hp: structuredClone(a.hp), resources: structuredClone(a.resources), ac: d.ac, speed: d.speed } } : {}), ...(groups.includes('skills') ? { skills: { actions: structuredClone(a.customActions || []), skills: [...a.skills], spells: [...a.spells] } } : {}), ...(groups.includes('equipment') ? { equipment: structuredClone(a.inventory) } : {}) };
   });
   const offers = raw.actors.filter(a => a.kind === 'hero' && (manageMembers || a.registration === 'available' || a.registration === 'requested' && a.requestedBy === session.member.id)).map(a => ({ id: a.id, name: a.name, portrait: a.portrait, story: String(a.choices?.offerDescription || ''), requestedBy: a.requestedBy, registration: a.registration }));
-  const actorViews = Object.fromEntries(state.actors.map(a => [a.id, engine.deriveActor(a)]));
+  const actorViews = Object.fromEntries(state.actors.map(a => [a.id, { ...engine.deriveActor(a), ...(w.rules.energy ? { energyLimits: energyLimits(a,w) } : {}) }]));
   return { state, world, tokens, offers, profiles, actorViews };
 }
