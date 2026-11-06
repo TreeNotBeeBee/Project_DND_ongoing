@@ -26,14 +26,24 @@ after(async () => { await browser?.close(); await runtime?.close(); if (director
 async function context(mobile = false) { const result = await browser.newContext({ viewport: mobile ? { width: 390, height: 844 } : { width: 1440, height: 1000 } }); result.setDefaultTimeout(20_000); result.setDefaultNavigationTimeout(25_000); return result; }
 async function state(page: Page): Promise<Snapshot> { const response = await page.request.get(base + '/api/state'); assert.equal(response.status(), 200); return response.json(); }
 async function nativeCommand(page: Page, type: string, payload: Record<string, unknown>, actorId?: string) { const response = await page.request.post(base + '/api/command', { headers: { Origin: base, 'X-Jige-Request': '1' }, data: { operationId: randomUUID(), expectedRev: (await state(page)).state.rev, type, actorId, payload } }); const data = await response.json(); assert.equal(response.status(), 200, data.error); return data.snapshot as Snapshot; }
-async function dismissRecovery(page: Page) { const button = page.getByRole('button', { name: '我已妥善保存' }); await expect(button).toBeVisible(); await button.click(); }
-async function hostWorld(page: Page, mode: 'gm' | 'ai' | 'co-create', name: string) {
-  await page.goto(base + '/#hostToken=fictional-world-ui-live-host'); await page.getByLabel('怎么称呼你').fill('虚构验收房主'); await page.getByLabel('世界名称').fill(name);
-  if (mode === 'co-create') { await page.getByRole('button', { name: /自由共创/ }).click(); await page.getByLabel('房主保留否决权').check(); }
-  if (mode === 'ai') await page.getByRole('button', { name: /AI主持/ }).click();
-  await page.getByRole('button', { name: '创建这个世界 →' }).click(); await dismissRecovery(page); await expect(page.getByRole('heading', { name })).toBeVisible();
+// These fixtures intentionally retain the legacy mechanical AI protocol. Link an
+// actual password account before rendering the product's authenticated workspace.
+async function linkFixtureAccount(page: Page, displayName: string, worldId: string) {
+  const headers = { Origin: base, 'X-Jige-Request': '1' };
+  let response = await page.request.post(base + '/api/account/register', { headers, data: { username: 'fixture-' + randomUUID(), password: 'fictional-test-password', displayName } }); assert.equal(response.status(), 201, await response.text());
+  response = await page.request.post(base + '/api/account/link-current', { headers, data: {} }); assert.equal(response.status(), 200, await response.text());
+  response = await page.request.post(base + '/api/worlds/enter', { headers, data: { worldId } }); assert.equal(response.status(), 200, await response.text());
+  await page.goto(base + '/');
 }
-async function joinWorld(page: Page, owner: Page) { await page.goto(base + '/?invite=' + encodeURIComponent((await state(owner)).inviteCode!)); await page.getByLabel('怎么称呼你').fill('虚构验收玩家'); await page.getByRole('button', { name: '加入冒险 →' }).click(); await dismissRecovery(page); }
+async function hostWorld(page: Page, mode: 'gm' | 'ai' | 'co-create', name: string) {
+  const response = await page.request.post(base + '/api/campaigns', { headers: { Origin: base, 'X-Jige-Request': '1' }, data: { hostToken: 'fictional-world-ui-live-host', gmName: '虚构验收房主', name, mode, governance: { system: 'democracy', ownerVeto: mode === 'co-create' } } });
+  assert.equal(response.status(), 201, await response.text()); const snapshot = await response.json() as Snapshot;
+  await linkFixtureAccount(page, '虚构验收房主', snapshot.session.campaignId); await expect(page.getByRole('heading', { name })).toBeVisible();
+}
+async function joinWorld(page: Page, owner: Page) {
+  const response = await page.request.post(base + '/api/join', { headers: { Origin: base, 'X-Jige-Request': '1' }, data: { inviteCode: (await state(owner)).inviteCode!, name: '虚构验收玩家' } }); assert.equal(response.status(), 200, await response.text()); const snapshot = await response.json() as Snapshot;
+  await linkFixtureAccount(page, '虚构验收玩家', snapshot.session.campaignId);
+}
 async function navigate(page: Page, name: string) { await page.getByRole('navigation').getByRole('button', { name, exact: true }).click(); }
 async function createCard(owner: Page) { await navigate(owner, '角色管理'); await owner.getByRole('button', { name: /创建默认角色/ }).click(); await expect.poll(async () => (await state(owner)).offers!.length).toBeGreaterThan(0); }
 async function claimAndApprove(player: Page, owner: Page) { await player.getByRole('button', { name: '领取这个角色' }).first().click(); await expect(player.getByText('等待房主批准', { exact: false }).first()).toBeVisible(); await navigate(owner, '角色管理'); await expect(owner.getByRole('button', { name: '批准注册' })).toBeVisible(); await owner.getByRole('button', { name: '批准注册' }).click(); await expect.poll(async () => (await state(player)).state.actors.length).toBe(1); }
