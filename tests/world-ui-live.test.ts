@@ -5,7 +5,7 @@ import { mkdtemp, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve, sep } from 'node:path';
 import { build } from 'vite';
-import { chromium, expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
+import { chromium, expect, type Browser, type Page } from '@playwright/test';
 import { createApplication } from '../src/server/app';
 import type { Snapshot } from '../src/shared/model';
 
@@ -13,7 +13,6 @@ import type { Snapshot } from '../src/shared/model';
 // and shared dist/. Only the entry import is switched while legacy main remains.
 let browser: Browser, runtime: Awaited<ReturnType<typeof createApplication>>, directory: string, base: string;
 const shots = resolve('work/world-ui-preview');
-const pixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1sAAAAASUVORK5CYII=', 'base64');
 before(async () => {
   directory = await mkdtemp(join(tmpdir(), 'jige-world-ui-live-')); await mkdir(shots, { recursive: true });
   const forbidden: string[] = [];
@@ -70,7 +69,7 @@ test('real host and mobile player create, claim, upload, approve, unlock and res
   // through the modal's explicit rebase action without duplicating the save.
   await navigate(player, '我的角色'); await player.getByRole('button', { name: '头像与公开设置' }).click(); dialog = player.getByRole('dialog'); await dialog.getByLabel('故事与介绍', { exact: true }).check(); let release!: () => void, received!: () => void; const gate = new Promise<void>(resolve => { release = resolve; }), intercepted = new Promise<void>(resolve => { received = resolve; }); let delayed = false;
   await player.route('**/api/command', async route => { if (!delayed && route.request().postDataJSON().type === 'profile.update') { delayed = true; received(); await gate; } await route.continue(); }); await dialog.getByRole('button', { name: '保存头像与公开设置' }).click(); await intercepted; await nativeCommand(owner, 'gm.pause', { paused: false }); release(); await expect(dialog.getByRole('button', { name: '已复核，按最新状态重提' })).toBeVisible(); await dialog.getByRole('button', { name: '已复核，按最新状态重提' }).click(); await expect(dialog).toHaveCount(0); await player.unroute('**/api/command'); assert.deepEqual((await state(player)).state.actors[0].publicGroups, ['story']);
-  await navigate(owner, '世界总览'); await expect(owner.locator('.world-map-shell canvas')).toBeVisible(); await expect(owner.locator('.w-global-feedback .w-alert')).toHaveCount(0); await owner.screenshot({ path: join(shots, 'live-desktop.png'), fullPage: false }); await navigate(player, '我的角色'); await expect(player.locator('.w-global-feedback .w-alert')).toHaveCount(0); assert.ok(await player.evaluate(() => document.documentElement.scrollWidth <= innerWidth)); await player.screenshot({ path: join(shots, 'live-mobile.png'), fullPage: false });
+  await navigate(owner, '世界总览'); await expect(owner.locator('.world-map-shell canvas')).toBeVisible(); await expect(owner.locator('.w-global-feedback .w-alert')).toHaveCount(0); await owner.screenshot({ path: join(shots, 'live-desktop.png'), fullPage: false }); await navigate(player, '我的角色'); await expect(player.locator('.w-global-feedback .w-alert')).toHaveCount(0); assert.ok(await player.evaluate(() => document.documentElement.scrollWidth <= innerWidth)); assert.equal(await player.evaluate(() => scrollY), 0); await player.screenshot({ path: join(shots, 'live-mobile.png'), fullPage: false });
 });
 
 test('real democratic proposal consumes reserved AP, receives a decisive vote, and permits the configured owner veto', { timeout: process.env.CI ? 240_000 : 150_000 }, async t => {
