@@ -16250,8 +16250,8 @@
   ],
   "complete": false,
   "note": "Coverage distinguishes local reference data from tested executable rules. Unsupported deterministic entries are blocked, never approximated.",
-  "generatedAt": "2026-11-04T13:40:19.326Z",
-  "evaluatedCodeCommit": "525870f3fb3938051ff58e4a7492966784ea0596",
+  "generatedAt": "2026-11-06T08:59:17.895Z",
+  "evaluatedCodeCommit": "28331721abe801973d573d089ad9b9bd9435c5cf",
   "source": {
     "ruleset": "srd-5.2.1",
     "edition": 2024,

@@ -10,8 +10,8 @@
     "dev:server": "node --watch scripts/dev-server.mjs",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test tests/*.test.*",
-    "test:e2e": "node --import tsx --test tests/client-ui.test.ts tests/client-live.test.ts",
+    "test": "node --import tsx --test --test-concurrency=4 tests/*.test.*",
+    "test:e2e": "node --import tsx --test --test-concurrency=2 tests/world-ui-live.test.ts tests/client-ui.test.ts tests/client-live.test.ts",
     "coverage:rules": "node scripts/report-coverage.mjs",
     "backup": "node scripts/backup.mjs",
     "restore": "node scripts/restore.mjs"
